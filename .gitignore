@@ -1,0 +1,73 @@
+# Secrets et données locales
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+
+# Environnements et caches Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.whl
+*.tar.gz
+*.tgz
+
+# Assets tiers téléchargés par scripts/fetch_vendor.sh
+# (ne pas versionner : ils sont récupérés à l'installation / au build Docker)
+app/static/vega.min.js
+app/static/vega-lite.min.js
+app/static/vega-embed.min.js
+app/static/maplibre-gl.js
+app/static/maplibre-gl.css
+app/static/html2canvas.min.js
+app/static/fonts/*.woff2
+app/static/fonts/*.ttf
+
+# Binaires, ressources et scripts d'installation / analyse Tableau
+# (propriétaires : ne jamais publier)
+attached.cab
+TableauReader-*.exe
+*.cab
+*.msi
+*.exe
+*.dll
+*.rcc
+burn/
+msi/
+wine/
+vizclient/
+extract_rcc.py
+
+# Classeurs, extraits et jeux de données locaux
+*.twb
+*.twbx
+*.hyper
+*.tdsx
+*.tde
+import_donnees_exemples/
+sample.twb
+sample.twbx
+
+# Outils locaux et divers
+.opencode/
+.agents/
+.idea/
+.vscode/
+node_modules/
+*.log
+*.pid
+.DS_Store
