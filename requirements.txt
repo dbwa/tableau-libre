@@ -1,0 +1,6 @@
+# Dépendances Python téléchargées par pip au build (aucun wheel versionné).
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+tableauhyperapi==0.0.26963
+lxml>=5,<7
+python-multipart>=0.0.9

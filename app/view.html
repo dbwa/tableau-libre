@@ -1,0 +1,2179 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lecteur Tableau</title>
+<style>
+  :root { --bd:#e3e6ea; --ink:#1b1b1b; --muted:#6b7280; --accent:#1b6ef3; --bg:#fafbfc; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ink); background:var(--bg); }
+  header { display:flex; align-items:center; gap:14px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--bd); position:sticky; top:0; z-index:20; }
+  header a { color:var(--muted); text-decoration:none; font-size:13px; white-space:nowrap; flex:0 0 auto; }
+  header a:hover { color:var(--accent); }
+  .embed header { padding:6px 10px; }
+  .embed header #backlink, .embed header #manage, .embed #expiry,
+  .embed #endsession { display:none !important; }
+  #endsession { border:1px solid #f0b8b2; background:#fff; color:#b42318;
+    border-radius:999px; padding:2px 9px; font:11px system-ui; cursor:pointer; }
+  #endsession:hover { background:#fff1f0; }
+  #wbname { font-weight:600; font-size:13px; white-space:nowrap; flex:0 0 auto; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  nav { display:flex; gap:3px; flex:1 1 auto; overflow-x:auto; white-space:nowrap; scrollbar-width:thin; }
+  nav button { flex:0 0 auto; border:0; background:transparent; padding:6px 11px; border-radius:7px; cursor:pointer; font:inherit; color:var(--muted); }
+  nav button:hover { background:#f1f3f6; }
+  nav button.on { background:#e8f0fe; color:var(--accent); font-weight:600; }
+  #search { flex:0 0 150px; font:12px system-ui; padding:5px 8px; border:1px solid var(--bd); border-radius:6px; }
+  #dashfit { flex:0 0 auto; font:12px system-ui; padding:5px 7px; border:1px solid var(--bd); border-radius:6px; background:#fff; color:var(--ink); }
+  .tools { display:flex; gap:4px; flex:0 0 auto; }
+  .tools button { border:1px solid var(--bd); background:#fff; border-radius:6px; padding:5px 9px; font:12px system-ui; cursor:pointer; color:var(--ink); }
+  .tools button:hover { background:#f5f8ff; border-color:#b9cdf0; }
+  main { padding:16px; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px; }
+  .sheethead { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .sheethead h2 { font-size:15px; margin:0; font-weight:600; }
+  .sheethead .sub { color:var(--muted); font-size:12px; }
+  .chart { width:100%; height:100%; }
+  .dash { position:relative; width:100%; margin:0 auto; border-radius:8px; overflow:hidden; }
+  .dash .zone { position:absolute; padding:4px; overflow:hidden; }
+  .dash .zone > div { width:100%; height:100%; }
+  .dash .zt { overflow:hidden; font-size:12px; line-height:1.4; color:#333; }
+  .dash .zt p { margin:0 0 .55em; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { border-bottom:1px solid var(--bd); padding:6px 10px; text-align:left; white-space:nowrap; }
+  th { background:#f7f8fa; font-weight:600; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  th.rowhead { background:#fbfcfd; }
+  th.corner { background:#fff; }
+  .scroll { max-height:72vh; overflow:auto; }
+  .pager { display:flex; align-items:center; gap:8px; padding:2px 0 6px; font-size:12px; color:var(--muted); }
+  .pager button { border:1px solid var(--bd); background:#fff; border-radius:6px; padding:2px 9px; font:13px system-ui; cursor:pointer; color:var(--ink); }
+  .pager button:disabled { opacity:.4; cursor:default; }
+  .totalrow th, .totalrow td { background:#f7f8fa; }
+  .dash .sheethead { margin:0 0 4px; }
+  .dash .sheethead h2 { font-size:12px; }
+  .dash .sheethead .sub { display:none; }
+  .dash .zt { white-space:pre-wrap; }
+  .meta { color:var(--muted); font-size:12px; padding:2px 2px 8px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .controls { display:flex; gap:12px; flex-wrap:wrap; padding:2px 2px 12px; border-bottom:1px solid var(--bd); margin-bottom:14px; align-items:flex-end; }
+  .ctl { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .ctl select, .ctl input { font:13px system-ui; padding:5px 7px; border:1px solid var(--bd); border-radius:6px; background:#fff; color:var(--ink); text-transform:none; letter-spacing:0; min-width:120px; }
+  .ctl select[multiple] { min-width:160px; padding:3px; }
+  .ctl .row { display:flex; gap:4px; align-items:center; }
+  .ctl .row input { min-width:64px; width:74px; }
+  .ctl button { font:12px system-ui; padding:5px 9px; border:1px solid var(--bd); background:#fff; border-radius:6px; cursor:pointer; }
+  .ctl button:hover { background:#f5f8ff; }
+  .ms { position:relative; }
+  .msbtn { min-width:140px; text-align:left; background:#fff; border:1px solid var(--bd); border-radius:6px; padding:5px 8px; font:13px system-ui; cursor:pointer; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mspanel { position:absolute; top:100%; left:0; margin-top:4px; background:#fff; border:1px solid var(--bd); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.14); padding:6px; max-height:260px; overflow:auto; min-width:190px; display:none; z-index:60; }
+  .mspanel.on { display:block; }
+  .mspanel label { display:flex; gap:6px; align-items:center; padding:3px 5px; border-radius:4px; font:12px system-ui; text-transform:none; letter-spacing:0; color:var(--ink); white-space:nowrap; }
+  .mspanel label:hover { background:#f1f3f6; }
+  .mspanel .all { border-bottom:1px solid var(--bd); margin-bottom:4px; padding-bottom:6px; }
+  .checklist { border:1px solid var(--bd); border-radius:6px; background:#fff; max-height:180px; overflow:auto; padding:4px 6px; min-width:160px; }
+  .checklist label { display:flex; gap:6px; align-items:center; padding:2px 3px; border-radius:4px; font:12px system-ui; text-transform:none; letter-spacing:0; color:var(--ink); white-space:nowrap; }
+  .checklist label:hover { background:#f1f3f6; }
+  .checklist label.all { border-bottom:1px solid var(--bd); margin-bottom:3px; padding-bottom:4px; font-weight:600; }
+  .checklist .clsearch, .mspanel .clsearch { width:100%; font:12px system-ui; padding:3px 6px; border:1px solid var(--bd); border-radius:4px; margin-bottom:4px; }
+  .sliderctl { display:flex; align-items:center; gap:8px; }
+  .sliderctl input[type=range] { width:140px; }
+  .sliderctl span { font-size:12px; color:var(--ink); min-width:34px; }
+  th.clickable, td.clickable { cursor:pointer; }
+  th.clickable:hover, td.clickable:hover { background:#eef4ff; color:#1b4ea8; }
+  .cfilter { display:flex; align-items:center; gap:10px; background:#eef4ff; border:1px solid #c9dcff; color:#1b4ea8; padding:7px 12px; border-radius:8px; margin-bottom:12px; font-size:13px; flex-wrap:wrap; }
+  .cfilter button { background:transparent; border:0; color:#1b4ea8; cursor:pointer; font-size:15px; padding:0 4px; }
+  tr.dim td, tr.dim th { opacity:.35; }
+  tr.hl td, tr.hl th { background:#fff3cd; }
+  td.dim { opacity:.35; }
+  td.hl { background:#fff3cd; }
+  .kpi { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:58px 20px; }
+  .kpi .kv { font-size:46px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .kpi .kl { color:var(--muted); margin-top:10px; font-size:13px; text-align:center; }
+  .warn { background:#fff8e6; border:1px solid #f2d98c; color:#7a5b00; padding:8px 12px; border-radius:8px; margin-bottom:14px; font-size:13px; }
+  .warn summary { cursor:pointer; font-weight:600; }
+  .warn ul { margin:6px 0 0; padding-left:18px; max-height:160px; overflow:auto; }
+  .warn li { margin:2px 0; }
+  .loading { color:var(--muted); font-size:12px; padding:12px; text-align:center; }
+  .empty { color:var(--muted); padding:36px; text-align:center; }
+  .map { height:460px; border-radius:8px; overflow:hidden; position:relative; }
+  .dash .map { height:100%; }
+  .maplegend { position:absolute; left:10px; bottom:10px; background:rgba(255,255,255,.95); border:1px solid var(--bd); border-radius:6px; padding:7px 10px; font-size:11px; color:var(--muted); z-index:2; min-width:130px; max-width:230px; }
+  .maplegend .lg-title { color:var(--ink); font-weight:600; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .maplegend .lg-grad { height:8px; border-radius:3px; margin:4px 0 2px; }
+  .maplegend .lg-scale { display:flex; justify-content:space-between; gap:8px; }
+  .maplegend .lg-row { display:flex; align-items:center; gap:5px; line-height:1.55; }
+  .maplegend .lg-row i { width:9px; height:9px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+  .maplegend .lg-warn { color:#a15c00; margin-top:3px; }
+  .maplegend.legendstatic { position:static; margin:4px 0 8px; display:inline-block; }
+  .maptools { position:absolute; top:10px; left:10px; display:flex; gap:4px; z-index:3; }
+  .maptools button { width:28px; height:28px; border:1px solid var(--bd); background:rgba(255,255,255,.95); border-radius:6px; cursor:pointer; font-size:14px; line-height:1; color:var(--ink); padding:0; }
+  .maptools button.on { background:#e8f0fe; border-color:#9cc0ff; color:var(--accent); }
+  .mapsel { position:absolute; inset:0; pointer-events:none; z-index:2; display:none; }
+  .selrect { position:absolute; border:1.5px dashed #1b6ef3; background:rgba(27,110,243,.08); }
+  .sellasso { position:absolute; inset:0; width:100%; height:100%; }
+  .storynav { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .storynav button { border:1px solid var(--bd); background:#fff; border-radius:20px; padding:5px 13px; font:12px system-ui; cursor:pointer; color:var(--muted); }
+  .storynav button.on { background:#e8f0fe; color:var(--accent); border-color:#b9cdf0; font-weight:600; }
+  .menu { position:fixed; z-index:100; background:#fff; border:1px solid var(--bd); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.14); padding:5px; min-width:170px; }
+  .menu button { display:block; width:100%; text-align:left; border:0; background:transparent; padding:7px 10px; font:13px system-ui; cursor:pointer; border-radius:5px; color:var(--ink); }
+  .menu button:hover { background:#f1f3f6; }
+  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#1f2937; color:#fff; padding:9px 16px; border-radius:8px; font-size:13px; z-index:120; opacity:0; transition:opacity .2s; }
+  .toast.on { opacity:1; }
+  .pill { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--bd); border-radius:12px; padding:1px 7px; font-size:11px; color:var(--muted); background:#fff; white-space:nowrap; }
+  @media print {
+    header, .tools, .controls, .cfilter, .storynav, .maptools { display:none !important; }
+    body { background:#fff; }
+    main { padding:0; }
+    .panel { border:0; padding:0; }
+    .dash { max-height:none !important; page-break-inside:avoid; }
+    .scroll { max-height:none; overflow:visible; }
+  }
+</style>
+<link href="/static/maplibre-gl.css" rel="stylesheet">
+<script src="/static/vega.min.js"></script>
+<script src="/static/vega-lite.min.js"></script>
+<script src="/static/vega-embed.min.js"></script>
+<script src="/static/maplibre-gl.js"></script>
+<script src="/static/html2canvas.min.js"></script>
+</head>
+<body>
+<header>
+  <a href="/" id="backlink">← Nouveau fichier</a>
+  <a href="/account" id="manage" style="display:none">Gérer</a>
+  <span id="wbname"></span>
+  <span id="expiry" class="pill" style="display:none"></span>
+  <button id="endsession" style="display:none" title="Supprimer les fichiers de cette session">Terminer</button>
+  <input id="search" placeholder="Filtrer les onglets…">
+  <nav id="tabs"></nav>
+  <select id="dashfit" title="Taille du tableau de bord">
+    <option value="window">Fenêtre</option>
+    <option value="width">Largeur</option>
+    <option value="fixed">Taille du classeur</option>
+  </select>
+  <div class="tools">
+    <button id="btn-csv" title="Exporter la feuille en CSV">CSV</button>
+    <button id="btn-png" title="Exporter en PNG">PNG</button>
+    <button id="btn-print" title="Imprimer / PDF">PDF</button>
+  </div>
+</header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<script nonce="__CSP_NONCE__">
+const WB = /*__DATA__*/null;
+const main = document.getElementById('main');
+const tabs = document.getElementById('tabs');
+function withKey(url){
+  if(!WB.shareKey) return url;
+  return url + (url.indexOf('?')>=0?'&':'?') + 'key=' + encodeURIComponent(WB.shareKey);
+}
+
+if (WB.title) {
+  document.title = WB.title + ' — Lecteur Tableau';
+  document.getElementById('wbname').textContent = WB.title;
+  document.getElementById('wbname').title = WB.title;
+}
+if (WB.expires) {
+  const e = document.getElementById('expiry');
+  e.style.display = '';
+  e.textContent = 'Expire le ' + String(WB.expires).slice(0, 10);
+  e.title = 'Le classeur est supprimé après cette date.';
+}
+if (WB.back !== undefined && WB.back !== null) {
+  const back = document.getElementById('backlink');
+  if (WB.back) { back.href = WB.back; back.textContent = WB.backLabel || '← Retour'; }
+  else back.style.display = 'none';
+}
+if (WB.manageUrl) {
+  const m = document.getElementById('manage');
+  m.href = WB.manageUrl; m.style.display = '';
+}
+if (WB.embed) document.body.classList.add('embed');
+if (WB.public && WB.sessionEnd) {
+  const end = document.getElementById('endsession');
+  end.style.display = '';
+  end.onclick = async () => {
+    if (!confirm('Supprimer tous les fichiers de cette session ?')) return;
+    try {
+      const r = await fetch(WB.sessionEnd, {
+        method: 'POST', headers: { 'X-CSRF-Token': WB.csrf || '' }
+      });
+      if (r.ok) window.location = '/';
+      else toast('Suppression impossible');
+    } catch (e) { toast('Suppression impossible'); }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// état
+// ---------------------------------------------------------------------------
+const state = {
+  view: 0,
+  filter: null,          // {fields, source}
+  highlight: null,
+  params: {},
+  dashFilters: {},
+  drill: {},
+  dash: null,
+  dashFit: null,
+  story: {},
+};
+const CLEANUPS = [];
+(WB.parameters || []).forEach(p => { state.params[p.name] = p.value; });
+
+const views = [];
+WB.dashboards.forEach(d => views.push({ label: d.name, kind: 'dash', data: d }));
+WB.sheets.forEach(s => views.push({ label: s.name, kind: 'sheet', data: s }));
+
+// ---------------------------------------------------------------------------
+// utilitaires
+// ---------------------------------------------------------------------------
+function isFormula(t) { return typeof t === 'string' && t.indexOf('[') >= 0; }
+function displayLabel(t, max) {
+  if (t === null || t === undefined || t === '') return '';
+  const s = String(t).replace(/\s+/g, ' ');
+  if (!isFormula(s)) return s;
+  return max && s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function labelOf(v) {
+  return String(v).replace(/^["']|["']$/g, '').replace(/^#|#$/g, '');
+}
+function normValue(v) {
+  return labelOf(v).replace(/[ T]00:00:00$/, '').replace(/[-/]/g, '');
+}
+function sameValue(a, b) { return normValue(a) === normValue(b); }
+function fmt(v, spec) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number' && spec) {
+    const d = spec.decimals || 0;
+    if (spec.kind === 'percent')
+      return (v * 100).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' %';
+    if (spec.kind === 'currency')
+      return v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR',
+                                         minimumFractionDigits: d, maximumFractionDigits: d });
+    if (spec.kind === 'number')
+      return v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  if (typeof v === 'number') {
+    const a = Math.abs(v);
+    if (a !== 0 && a < 0.001) return v.toExponential(3);
+    return v.toLocaleString('fr-FR', { maximumSignificantDigits: 6 });
+  }
+  return String(v);
+}
+const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet',
+                   'Août','Septembre','Octobre','Novembre','Décembre'];
+const WEEKDAYS_FR = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+function dimSuffix(name) {
+  const m = String(name || '').match(/\(([^()]+)\)$/);
+  return m ? m[1] : null;
+}
+function fmtDim(name, v) {
+  if (v === null || v === undefined) return '';
+  const s = dimSuffix(name);
+  if (s === 'month') {
+    const n = Number(v);
+    if (n >= 1 && n <= 12) return MONTHS_FR[n - 1];
+  }
+  if (s === 'weekday') {
+    const n = Number(v);
+    if (n >= 0 && n <= 6) return WEEKDAYS_FR[n];
+  }
+  if (s === 'quarter') return 'T' + v;
+  if (s === 'year' || s === 'day' || s === 'week' || s === 'hour' ||
+      s === 'minute' || s === 'second') return String(v);
+  if (s === 'month-year') return String(v).slice(0, 7);
+  if (s === 'date' || s === 'day trunc' || s === 'month trunc' ||
+      s === 'year trunc' || s === 'week trunc') return String(v).slice(0, 10);
+  return fmt(v);
+}
+function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 2400);
+}
+function slug(s) { return encodeURIComponent(s); }
+
+const CAT_COLORS = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F',
+                    '#EDC948', '#B07AA1', '#FF9DA7', '#9D7660', '#BAB0AC'];
+const PALETTES = {
+  tableau10: CAT_COLORS,
+  tableau20: ['#4E79A7','#A0CBE8','#F28E2B','#FFBE7D','#59A14F','#8CD17D','#B6992D','#F1CE63','#499894','#86BCB6','#E15759','#FF9D9A','#79706E','#BAB0AC','#D37295','#FABFD2','#B07AA1','#D4A6C8','#9D7660','#D7B5A6'],
+  colorblind10: ['#006BA4','#FF800E','#ABABAB','#595959','#5F9ED1','#C85200','#898989','#A2C8EC','#FFBC79','#CFCFCF'],
+};
+const DIVERGING = {
+  orange_blue_white_diverging_10_0: ['#b35806','#e08214','#fdb863','#fee0b6','#f7f7f7','#d8daeb','#b2abd2','#8073ac','#542788','#2d004b'],
+  red_blue_diverging_10_0: ['#b2182b','#d6604d','#f4a582','#fddbc7','#f7f7f7','#d1e5f0','#92c5de','#4393c3','#2166ac','#053061'],
+};
+const SEQ = ['#deebf7','#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08306b'];
+function paletteColors(name, reverse) {
+  if (!name) return CAT_COLORS;
+  let cols = DIVERGING[name] || PALETTES[name] || PALETTES[name.split('_diverging')[0]] || CAT_COLORS;
+  cols = cols.slice();
+  return reverse ? cols.reverse() : cols;
+}
+function gradientCss(cols) {
+  if (!cols || cols.length < 2) cols = SEQ;
+  return 'linear-gradient(to right,' + cols.join(',') + ')';
+}
+
+// ---------------------------------------------------------------------------
+// sélection / actions
+// ---------------------------------------------------------------------------
+function selectionState(sheetName) {
+  if (state.highlight) return state.highlight;
+  if (state.filter && state.filter.source === sheetName) return state.filter;
+  return null;
+}
+function actionFor(sheet, activation) {
+  const list = (WB.actions || []).filter(a => a.source_sheet === sheet.name
+    && (a.activation || 'on-select') === (activation || 'on-select')
+    && (!a.source_dashboard || a.source_dashboard === state.dash));
+  return list[0] || null;
+}
+function hasAction(sheet) {
+  return (WB.actions || []).some(a => a.source_sheet === sheet.name
+    && (!a.source_dashboard || a.source_dashboard === state.dash));
+}
+function mapAliases(sheet, fields) {
+  const rev = (sheet && sheet.aliasReverse) || {};
+  const out = {};
+  const conv = (k, v) => {
+    const m = rev[k];
+    return m && m[String(v)] !== undefined ? m[String(v)] : v;
+  };
+  Object.entries(fields || {}).forEach(([k, v]) => {
+    out[k] = Array.isArray(v) ? v.map(x => conv(k, x)) : conv(k, v);
+  });
+  return out;
+}
+function markFields(datum, sheet) {
+  const cols = sheet.columns || [];
+  const out = {};
+  (Array.isArray(datum) ? datum : [datum]).forEach(d => Object.keys(d || {}).forEach(k => {
+    if (k.includes(':') || !cols.includes(k)) return;
+    const v = d[k];
+    if (v === null || v === undefined) return;
+    if (!out[k]) out[k] = [];
+    if (!out[k].some(x => String(x) === String(v))) out[k].push(v);
+  }));
+  return mapAliases(sheet, out);
+}
+function firstValue(fields) {
+  for (const k of Object.keys(fields)) if (fields[k].length) return fields[k][0];
+  return '';
+}
+function fillUrl(url, fields) {
+  return String(url || '').replace(/<([^>]+)>/g, (m, name) => {
+    const hit = Object.keys(fields).find(k => k.toLowerCase() === name.toLowerCase());
+    return hit ? encodeURIComponent(labelOf(firstValue({ [hit]: fields[hit] }))) : m;
+  });
+}
+function dispatch(action, fields, sheet) {
+  if (!action) return;
+  if (action.type === 'url') {
+    const url = fillUrl(action.url, fields);
+    if (/^https?:\/\//i.test(url) || (url.startsWith('/') && !url.startsWith('//'))) {
+      const w = window.open(url, '_blank', 'noopener');
+      if (w) w.opener = null;
+    }
+    return;
+  }
+  if (action.type === 'goto') {
+    const i = views.findIndex(v => v.label === action.target
+      || (v.data && v.data.name === action.target));
+    if (i >= 0) {
+      if (Object.keys(fields).length) state.filter = { fields, source: sheet.name, target: action.target };
+      show(i);
+    }
+    return;
+  }
+  if (action.type === 'parameter') {
+    const p = action.parameter;
+    const v = action.field && fields[action.field] ? firstValue(fields) : action.value;
+    if (p && v !== undefined && v !== null) {
+      state.params[p] = String(v).replace(/^["']|["']$/g, '');
+      show(state.view);
+      toast('Paramètre ' + p + ' = ' + labelOf(state.params[p]));
+    }
+    return;
+  }
+  if (action.type === 'highlight') {
+    state.highlight = { fields, source: sheet.name };
+    state.filter = null;
+  } else {
+    if (action.target) {
+      const ti = views.findIndex(v => v.kind === 'dash'
+        && (v.label === action.target || (v.data && v.data.name === action.target)));
+      if (ti >= 0 && ti !== state.view) {
+        state.filter = { fields, source: sheet.name };
+        state.highlight = null;
+        show(ti);
+        return;
+      }
+    }
+    state.filter = { fields, source: sheet.name };
+    state.highlight = null;
+  }
+  show(state.view);
+}
+function clearSelection() {
+  state.filter = null;
+  state.highlight = null;
+  show(state.view);
+}
+function banner(container, title, sel, clear) {
+  const b = document.createElement('div');
+  b.className = 'cfilter';
+  const label = document.createElement('span');
+  label.textContent = title + ' : ' + Object.entries(sel.fields)
+    .map(([f, v]) => displayLabel(fieldLabel(f, sel.source), 30) + ' = '
+      + (v.length > 3 ? v.length + ' valeurs' : v.map(labelOf).join(', ')))
+    .join('  ·  ');
+  const x = document.createElement('button');
+  x.textContent = '✕';
+  x.title = 'Retirer';
+  x.onclick = clear;
+  b.append(label, x);
+  container.appendChild(b);
+}
+function fieldLabel(name, srcName) {
+  const s = WB.sheets.find(x => x.name === srcName);
+  return (s && s.labels && s.labels[name]) || name;
+}
+function actionBanner(container) {
+  if (state.filter) banner(container, 'Filtre', state.filter, clearSelection);
+  if (state.highlight) banner(container, 'Surbrillance', state.highlight, clearSelection);
+}
+function rowClass(sheetName, values) {
+  const st = selectionState(sheetName);
+  if (!st) return '';
+  const keys = Object.keys(st.fields).filter(k => k in values);
+  if (!keys.length) return '';
+  const ok = keys.every(k => st.fields[k].some(v => String(v) === String(values[k])));
+  return ok ? 'hl' : 'dim';
+}
+function hlTest(fields, enc) {
+  const used = new Set(Object.values(enc || {}).map(e => e && e.field).filter(Boolean));
+  const keys = Object.keys(fields).filter(k => used.has(k));
+  if (!keys.length) return null;
+  return keys.map(k => `datum[${JSON.stringify(k)}] === ${JSON.stringify(fields[k][0])}`).join(' && ');
+}
+
+// ---------------------------------------------------------------------------
+// graphiques
+// ---------------------------------------------------------------------------
+function chart(spec, el, sheet, onClick) {
+  const w = Math.max(140, el.clientWidth - 6);
+  const h = Math.max(140, el.clientHeight - 6);
+  let s = JSON.parse(JSON.stringify(spec));
+  s.width = w; s.height = h;
+  s.autosize = { type: 'fit', contains: 'padding', resize: true };
+  s.config = {
+    view: { stroke: null },
+    mark: { color: '#4E79A7' },
+    range: { category: paletteColors((sheet.style || {}).palette, (sheet.style || {}).reverse),
+             ramp: SEQ },
+    axis: { labelFontSize: 11, titleFontSize: 12 },
+    legend: { labelFontSize: 11, titleFontSize: 12 },
+  };
+  if (sheet && dashHasLegend(sheet.name)) s.config.legend = { disable: true };
+  const st = sheet ? selectionState(sheet.name) : null;
+  if (st) {
+    const apply = enc => {
+      if (!enc) return;
+      const test = hlTest(st.fields, enc);
+      if (test) enc.opacity = { condition: { test, value: 1 }, value: 0.12 };
+    };
+    if (s.encoding) apply(s.encoding);
+    (s.layer || []).forEach(l => apply(l.encoding));
+  }
+  vegaEmbed(el, s, { actions: false }).then(res => {
+    el.__view = res.view;
+    if (!el.isConnected) {
+      try { res.view.finalize(); } catch (e) {}
+      return;
+    }
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(debounce(() => {
+        try { res.view.resize(); res.view.runAsync(); } catch (e) {}
+      }, 120));
+      ro.observe(el);
+      CLEANUPS.push(() => {
+        try { ro.disconnect(); } catch (e) {}
+        try { res.view.finalize(); } catch (e) {}
+      });
+    } else {
+      CLEANUPS.push(() => { try { res.view.finalize(); } catch (e) {} });
+    }
+    if (!sheet) return;
+    const act = actionFor(sheet, 'on-select');
+    const hover = actionFor(sheet, 'on-hover');
+    const menu = actionFor(sheet, 'on-menu');
+    if (act || onClick) {
+      res.view.addEventListener('click', (evt, item) => {
+        if (!item || !item.datum) return;
+        const fields = markFields(item.datum, sheet);
+        if (!Object.keys(fields).length) return;
+        if (act) dispatch(act, fields, sheet);
+        else if (onClick) onClick(fields);
+      });
+    }
+    if (hover) {
+      res.view.addEventListener('mouseover', debounce((evt, item) => {
+        if (item && item.datum) dispatch(hover, markFields(item.datum, sheet), sheet);
+      }, 250));
+    }
+    if (menu) {
+      el.addEventListener('contextmenu', evt => {
+        evt.preventDefault();
+        const item = res.view._lastItem;
+        showMenu(evt.clientX, evt.clientY, menu, item ? markFields(item.datum, sheet) : {}, sheet);
+      });
+      res.view.addEventListener('mousemove', (evt, item) => { res.view._lastItem = item; });
+    }
+  }).catch(e => {
+    el.innerHTML = '<div class="empty">Rendu impossible : ' + esc(e.message) + '</div>';
+  });
+}
+
+// ---------------------------------------------------------------------------
+// tableaux croisés
+// ---------------------------------------------------------------------------
+function runs(keys, level) {
+  const out = [];
+  let i = 0;
+  while (i < keys.length) {
+    const p = keys[i].slice(0, level + 1).join('\u0000');
+    let j = i;
+    while (j < keys.length && keys[j].slice(0, level + 1).join('\u0000') === p) j++;
+    out.push({ start: i, count: j - i });
+    i = j;
+  }
+  return out;
+}
+function orderedKeys(keys, dims, manual) {
+  if (!manual) return keys;
+  const order = [];
+  dims.forEach((d, i) => {
+    const m = manual[d];
+    if (!m) return;
+    keys.sort((a, b) => {
+      const ia = m.indexOf(String(a[i])), ib = m.indexOf(String(b[i]));
+      if (ia < 0 && ib < 0) return 0;
+      if (ia < 0) return 1;
+      if (ib < 0) return -1;
+      return ia - ib;
+    });
+  });
+  return keys;
+}
+function renderCrosstab(c, el, sheet, onClick) {
+  const rowDims = c.rowDims || [], colDims = c.colDims || [];
+  const measures = (c.measures && c.measures.length) ? c.measures : (c.measure ? [c.measure] : []);
+  const uniq = dims => {
+    const seen = new Map();
+    c.records.forEach(r => {
+      const k = dims.map(d => String(r[d] ?? '')).join('\u0000');
+      if (!seen.has(k)) seen.set(k, dims.map(d => r[d]));
+    });
+    return [...seen.values()];
+  };
+  const rowKeys = orderedKeys(uniq(rowDims), rowDims, c.manual);
+  const colKeys = orderedKeys(uniq(colDims), colDims, c.manual);
+  const cells = new Map();
+  c.records.forEach(r => {
+    const rk = rowDims.map(d => String(r[d] ?? '')).join('\u0000');
+    const ck = colDims.map(d => String(r[d] ?? '')).join('\u0000');
+    cells.set(rk + '\u0001' + ck, r);
+  });
+  const totalRow = new Map(), totalCol = new Map();
+  const T = c.totals || {};
+  (T.row || []).forEach(r => {
+    totalRow.set(rowDims.map(d => String(r[d] ?? '')).join('\u0000'), r);
+  });
+  (T.col || []).forEach(r => {
+    totalCol.set(colDims.map(d => String(r[d] ?? '')).join('\u0000'), r);
+  });
+  const grand = (T.grand || [])[0] || null;
+
+  const holder = document.createElement('div');
+  if (el.closest('.dash')) {
+    holder.style.flex = '1';
+    holder.style.minHeight = '0';
+    holder.style.display = 'flex';
+    holder.style.flexDirection = 'column';
+  }
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const L = c.labels || {};
+  const rawOf = d => L[d] || d;
+  const nameOf = d => displayLabel(rawOf(d), 42);
+  meta.innerHTML = `<span>Lignes : ${esc(rowDims.map(nameOf).join(' / ') || '—')}</span>`
+    + `<span>Colonnes : ${esc(colDims.map(nameOf).join(' / ') || '—')}</span>`
+    + `<span>Valeur : ${esc(measures.map(nameOf).join(' / ') || '—')}</span>`;
+  meta.title = 'Valeur : ' + measures.map(rawOf).join(' / ');
+  if (sheet && sheet.drill && sheet.drill.length) {
+    const b = document.createElement('button');
+    b.className = 'pill';
+    b.textContent = '↩ Replier';
+    b.onclick = () => { state.drill[sheet.name] = []; refreshSheet(sheet.name); };
+    meta.appendChild(b);
+  }
+  holder.appendChild(meta);
+  const ctLegend = crosstabLegendBox(sheet);
+  if (ctLegend) {
+    ctLegend.classList.add('legendstatic');
+    holder.appendChild(ctLegend);
+  }
+
+  const pager = document.createElement('div');
+  pager.className = 'pager';
+  const prev = document.createElement('button');
+  prev.textContent = '‹';
+  prev.title = 'Page précédente';
+  const next = document.createElement('button');
+  next.textContent = '›';
+  next.title = 'Page suivante';
+  const pinfo = document.createElement('span');
+  pager.append(prev, pinfo, next);
+  holder.appendChild(pager);
+
+  const t = document.createElement('table');
+  const head = t.createTHead();
+  const nMeasure = measures.length;
+
+  if (colDims.length) {
+    colDims.forEach((dim, lvl) => {
+      const tr = head.insertRow();
+      if (lvl === 0 && rowDims.length) {
+        const th = document.createElement('th');
+        th.rowSpan = colDims.length + (nMeasure > 1 ? 1 : 0);
+        th.colSpan = rowDims.length;
+        th.className = 'corner';
+        tr.appendChild(th);
+      }
+      runs(colKeys, lvl).forEach(r => {
+        const th = document.createElement('th');
+        th.colSpan = r.count * nMeasure;
+        th.textContent = fmtDim(dim, colKeys[r.start][lvl]) || '–';
+        tr.appendChild(th);
+      });
+    });
+    if (nMeasure > 1) {
+      const tr = head.insertRow();
+      colKeys.forEach(() => measures.forEach(m => {
+        const th = document.createElement('th');
+        th.className = 'num';
+        th.textContent = displayLabel(rawOf(m), 26);
+        th.title = rawOf(m);
+        tr.appendChild(th);
+      }));
+    }
+  } else {
+    const tr = head.insertRow();
+    rowDims.forEach(d => {
+      const th = document.createElement('th');
+      th.textContent = displayLabel(rawOf(d), 40);
+      tr.appendChild(th);
+    });
+    measures.forEach(m => {
+      const th = document.createElement('th');
+      th.className = 'num';
+      th.textContent = displayLabel(rawOf(m), 40);
+      th.title = rawOf(m);
+      tr.appendChild(th);
+    });
+  }
+
+  const body = t.createTBody();
+  const PAGE = 500;
+  const pages = Math.max(1, Math.ceil(rowKeys.length / PAGE));
+  let page = 0;
+  const runsByLevel = rowDims.map((_, lvl) => runs(rowKeys, lvl));
+
+  // couleur des cellules (tableau de mise en évidence)
+  const colorInfo = c.color;
+  let colorStats = null;
+  if (colorInfo) {
+    if (colorInfo.type === 'measure') {
+      const nums = c.records.map(r => Number(r[colorInfo.field])).filter(Number.isFinite);
+      if (nums.length) colorStats = { lo: Math.min(...nums), hi: Math.max(...nums) };
+    } else {
+      colorStats = { cats: [...new Set(c.records.map(r => String(r[colorInfo.field] ?? '')))] };
+    }
+  }
+  const sheetStyle = (sheet && sheet.style) || {};
+  const palette = paletteColors(sheetStyle.palette, sheetStyle.reverse);
+  function mixWhite(hex, amount) {
+    const h = String(hex || '#deebf7').replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    const m = v => Math.round(v + (255 - v) * amount);
+    return `rgb(${m(r)},${m(g)},${m(b)})`;
+  }
+  function cellBg(rec) {
+    if (!colorInfo || !colorStats) return '';
+    if (colorInfo.type === 'measure') {
+      const v = Number(rec[colorInfo.field]);
+      if (!Number.isFinite(v)) return '';
+      const lo = colorStats.lo, hi = colorStats.hi;
+      if (hi <= lo) return mixWhite(SEQ[4], 0.75);
+      const k = (v - lo) / (hi - lo);
+      return mixWhite(SEQ[Math.min(SEQ.length - 1, Math.round(k * (SEQ.length - 1)))], 0.7);
+    }
+    const v = String(rec[colorInfo.field] ?? '');
+    const i = colorStats.cats.indexOf(v);
+    return mixWhite(palette[(i < 0 ? 0 : i) % palette.length], 0.8);
+  }
+  const colorTitle = rec => {
+    if (!colorInfo) return '';
+    const v = colorInfo.type === 'measure'
+      ? fmt(rec[colorInfo.field], colorInfo.format)
+      : String(rec[colorInfo.field] ?? '');
+    return displayLabel(colorInfo.label || colorInfo.field, 40) + ' : ' + v;
+  };
+
+  function appendRows(start, end) {
+    body.innerHTML = '';
+    for (let ri = start; ri < end; ri++) {
+      const rk = rowKeys[ri];
+      const tr = body.insertRow();
+      const rowVals = {};
+      rowDims.forEach((d, i) => { rowVals[d] = rk[i]; });
+      const cls = rowClass(c.name, rowVals);
+      if (cls) tr.className = cls;
+      rowDims.forEach((dim, lvl) => {
+        const run = runsByLevel[lvl].find(r => r.start <= ri && ri < r.start + r.count);
+        if (!run) return;
+        if (run.start !== ri && ri !== start) return;
+        const spanEnd = Math.min(run.start + run.count, end);
+        const th = document.createElement('th');
+        th.rowSpan = Math.max(1, spanEnd - ri);
+        th.textContent = fmtDim(dim, rk[lvl]) || '–';
+        th.className = 'rowhead';
+        const canDrill = sheet && (sheet.drill || []).some(path => path.includes(dim))
+          && (sheet.drill || []).some(path => {
+            const i = path.indexOf(dim);
+            return i >= 0 && i < path.length - 1;
+          });
+        if (canDrill) {
+          th.classList.add('clickable');
+          th.title = 'Détailier';
+          th.onclick = () => {
+            const path = (sheet.drill || []).find(p => p.indexOf(dim) >= 0 && p.indexOf(dim) < p.length - 1);
+            const nextDim = path[path.indexOf(dim) + 1];
+            state.drill[sheet.name] = (state.drill[sheet.name] || []).concat([nextDim]);
+            refreshSheet(sheet.name);
+          };
+        } else if (onClick) {
+          th.classList.add('clickable');
+          th.onclick = () => onClick(mapAliases(sheet, { [dim]: rk[lvl] }));
+        }
+        tr.appendChild(th);
+      });
+      if (colDims.length) {
+        colKeys.forEach(ck => {
+          const rec = cells.get(rk.join('\u0000') + '\u0001' + ck.join('\u0000')) || {};
+          const colVals = {};
+          colDims.forEach((d, i) => { colVals[d] = ck[i]; });
+          const cellCls = cls ? '' : rowClass(c.name, Object.assign({}, rowVals, colVals));
+          measures.forEach(m => {
+            const td = tr.insertCell();
+            td.className = 'num' + (cellCls ? ' ' + cellCls : '');
+            td.textContent = fmt(rec[m], c.formats && c.formats[m]);
+            const bg = cellBg(rec);
+            if (bg) td.style.background = bg;
+            if (sheet && sheet.tooltip)
+              td.title = fillCustomTooltip(sheet.tooltip, rec, sheet, false);
+            else if (colorInfo) td.title = colorTitle(rec);
+            if (onClick) {
+              td.classList.add('clickable');
+              td.onclick = () => onClick(mapAliases(sheet, Object.assign({}, rowVals, colVals)));
+            }
+          });
+        });
+      } else {
+        const rec = cells.get(rk.join('\u0000') + '\u0001') || {};
+        measures.forEach(m => {
+          const td = tr.insertCell();
+          td.className = 'num';
+          td.textContent = fmt(rec[m], c.formats && c.formats[m]);
+          const bg = cellBg(rec);
+          if (bg) td.style.background = bg;
+          if (sheet && sheet.tooltip)
+            td.title = fillCustomTooltip(sheet.tooltip, rec, sheet, false);
+          else if (colorInfo) td.title = colorTitle(rec);
+          if (onClick) {
+            td.classList.add('clickable');
+            td.onclick = () => onClick(mapAliases(sheet, rowVals));
+          }
+        });
+      }
+    }
+    if (colDims.length && (totalRow.size || grand)) {
+      const tr = body.insertRow();
+      tr.className = 'totalrow';
+      const th = document.createElement('th');
+      th.colSpan = rowDims.length || 1;
+      th.textContent = 'Total';
+      th.className = 'rowhead';
+      tr.appendChild(th);
+      colKeys.forEach(ck => {
+        const rec = totalRow.get(ck.join('\u0000')) || grand || {};
+        measures.forEach(m => {
+          const td = tr.insertCell();
+          td.className = 'num';
+          td.style.fontWeight = '600';
+          td.textContent = fmt(rec[m], c.formats && c.formats[m]);
+        });
+      });
+    }
+    if (rowDims.length && totalCol.size) {
+      for (let ri = start; ri < end; ri++) {
+        const row = body.rows[ri - start];
+        if (!row) continue;
+        const rec = totalCol.get(rowKeys[ri].join('\u0000')) || {};
+        measures.forEach(m => {
+          const td = row.insertCell();
+          td.className = 'num';
+          td.style.fontWeight = '600';
+          td.textContent = fmt(rec[m], c.formats && c.formats[m]);
+        });
+      }
+    }
+    if (c.cellStyle) {
+      const st = c.cellStyle;
+      const color = st['background-color'];
+      const size = st['font-size'];
+      if (color) t.querySelectorAll('td.num').forEach(td => {
+        if (!td.style.background) td.style.background = color;
+      });
+      if (size) t.querySelectorAll('td').forEach(td => { td.style.fontSize = size + 'px'; });
+    }
+  }
+
+  function paint() {
+    const start = page * PAGE;
+    const end = Math.min(rowKeys.length, start + PAGE);
+    appendRows(start, end);
+    pinfo.textContent = rowKeys.length
+      ? `Lignes ${start + 1}–${end} sur ${rowKeys.length}` : 'Aucune ligne';
+    prev.disabled = page === 0;
+    next.disabled = page >= pages - 1;
+    pager.style.display = pages > 1 ? '' : 'none';
+  }
+  prev.onclick = () => { if (page > 0) { page--; paint(); } };
+  next.onclick = () => { if (page < pages - 1) { page++; paint(); } };
+
+  const scroll = document.createElement('div');
+  scroll.className = 'scroll';
+  if (el.closest('.dash')) {
+    scroll.style.flex = '1';
+    scroll.style.minHeight = '0';
+    scroll.style.maxHeight = 'none';
+  }
+  scroll.appendChild(t);
+  holder.appendChild(scroll);
+  el.appendChild(holder);
+  paint();
+}
+
+// ---------------------------------------------------------------------------
+// carte
+// ---------------------------------------------------------------------------
+const MAP_VIEWS = {};
+let MAP_MODE = null;
+
+function eachCoord(geom, fn) {
+  const walk = c => { if (typeof c[0] === 'number') fn(c); else (c || []).forEach(walk); };
+  walk((geom && geom.coordinates) || []);
+}
+function firstCoord(geom) {
+  let out = null;
+  eachCoord(geom, c => { if (!out) out = c; });
+  return out;
+}
+function boundsOf(features) {
+  let x0 = 180, y0 = 90, x1 = -180, y1 = -90, n = 0;
+  features.forEach(f => eachCoord(f.geometry, c => {
+    x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0]);
+    y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1]); n++;
+  }));
+  if (!n) return null;
+  if (x0 === x1 && y0 === y1) return [[x0 - 0.01, y0 - 0.01], [x0 + 0.01, y0 + 0.01]];
+  return [[x0, y0], [x1, y1]];
+}
+function mapSelectionExpr(s) {
+  const st = selectionState(s.name);
+  if (!st) return null;
+  const details = s.details || [];
+  const tests = Object.entries(st.fields)
+    .filter(([f]) => details.includes(f))
+    .map(([f, vals]) => ['in', ['get', f], ['literal', vals]]);
+  if (!tests.length) return null;
+  return tests.length === 1 ? tests[0] : ['all', ...tests];
+}
+function matchesProps(props, fields) {
+  const keys = Object.keys(fields).filter(k => k in props);
+  if (!keys.length) return false;
+  return keys.every(k => fields[k].some(v => String(v) === String(props[k])));
+}
+function mapColorExpr(s) {
+  const cols = paletteColors(s.palette, s.reverse);
+  if (s.categorical && s.categories && s.categories.length) {
+    const e = ['match', ['get', '__value']];
+    s.categories.forEach((c, i) => e.push(c, cols[i % cols.length]));
+    e.push('#9aa3ad');
+    return e;
+  }
+  if (!s.valueField || !Number.isFinite(s.min)) return cols[0] || '#4E79A7';
+  if (!Number.isFinite(s.max) || s.max <= s.min) return SEQ[4];
+  const lo = s.min, hi = s.max;
+  const v = ['coalesce', ['get', s.valueField], lo];
+  if (s.diverging) {
+    const d = DIVERGING[s.palette] || DIVERGING.red_blue_diverging_10_0;
+    return ['interpolate', ['linear'], v, lo, d[0], 0, d[Math.floor(d.length / 2)], hi, d[d.length - 1]];
+  }
+  return ['interpolate', ['linear'], v, lo, SEQ[1], (lo + hi) / 2, SEQ[4], hi, SEQ[6]];
+}
+function valueText(s, v) {
+  if (v === null || v === undefined) return '—';
+  return s.categorical ? String(v) : fmt(Number(v), s.valueFormat);
+}
+const AGG_LABEL = {
+  yr: 'year', qr: 'quarter', mn: 'month', dy: 'day', wk: 'week',
+  wd: 'weekday', hr: 'hour', mi: 'minute', sc: 'second',
+  md: 'date', tdy: 'day trunc', tyr: 'year trunc', tqr: 'quarter trunc',
+  tmn: 'month trunc', twk: 'week trunc', thr: 'hour trunc',
+  tmi: 'minute trunc', tsc: 'second trunc', 'month-year': 'month-year',
+  'trunc-year': 'year trunc', 'trunc-qtr': 'quarter trunc',
+  'trunc-month': 'month trunc', 'trunc-week': 'week trunc',
+  'trunc-day': 'day trunc', 'trunc-hour': 'hour trunc',
+  'trunc-minute': 'minute trunc', 'trunc-second': 'second trunc',
+};
+function fillCustomTooltip(tpl, rec, sheet, html) {
+  let out = '';
+  String(tpl).split(/(<[^>]+>)/).forEach(part => {
+    if (!part) return;
+    if (part.startsWith('<') && part.endsWith('>')) {
+      const m = part.slice(1, -1).match(/\[[^\]]+\]\.\[([^\]]+)\]/);
+      let val = '', used = null;
+      if (m) {
+        const bits = m[1].split(':');
+        const agg = bits[0], field = bits.slice(1, -1).join(':');
+        const keys = [agg + ':' + field, field];
+        if (AGG_LABEL[agg]) keys.push(field + ' (' + AGG_LABEL[agg] + ')');
+        for (const k of keys) {
+          if (rec[k] !== undefined && rec[k] !== null) { val = rec[k]; used = k; break; }
+        }
+      }
+      if (used) {
+        if (dimSuffix(used)) val = fmtDim(used, val);
+        else if (typeof val === 'number' || (sheet.formats && sheet.formats[used]))
+          val = fmt(val, sheet.formats && sheet.formats[used]);
+        else val = String(val);
+      } else {
+        val = '';
+      }
+      out += html ? esc(val) : String(val);
+    } else {
+      out += html ? esc(part).replace(/\t/g, '&nbsp;&nbsp;&nbsp;').replace(/\n/g, '<br>')
+                  : part;
+    }
+  });
+  return out;
+}
+function customMapTooltip(tpl, p, s) {
+  return fillCustomTooltip(tpl, p, s, true) || '—';
+}
+function tooltipHtml(s, p) {
+  if (s.tooltip) return customMapTooltip(s.tooltip, p, s);
+  let html = '';
+  if (s.valueField && p[s.valueField] != null)
+    html += `<div><b>${esc(displayLabel(s.valueLabel, 40)) || 'valeur'}</b> : ${esc(valueText(s, p[s.valueField]))}</div>`;
+  if (s.sizeField && p[s.sizeField] != null)
+    html += `<div><b>Taille</b> : ${esc(fmt(Number(p[s.sizeField]), null))}</div>`;
+  Object.entries(p).forEach(([k, v]) => {
+    if (k === '__value' || k === '__size') return;
+    html += `<div><b>${esc(displayLabel(k, 40))}</b> : ${esc(v == null ? '—' : v)}</div>`;
+  });
+  return html || '—';
+}
+function buildLegend(s, box) {
+  const lg = document.createElement('div');
+  lg.className = 'maplegend';
+  const cols = paletteColors(s.palette, s.reverse);
+  let html = '';
+  if (s.categorical && s.categories && s.categories.length) {
+    html += `<div class="lg-title" title="${esc(s.valueLabel)}">${esc(displayLabel(s.valueLabel, 30)) || 'catégorie'}</div>`;
+    html += s.categories.slice(0, 8).map((c, i) =>
+      `<div class="lg-row"><i style="background:${cols[i % cols.length]}"></i>${esc(c)}</div>`).join('');
+    if (s.categories.length > 8) html += `<div class="lg-row">+ ${s.categories.length - 8} autres…</div>`;
+  } else if (s.valueField && Number.isFinite(s.min)) {
+    const lo = s.min, hi = Number.isFinite(s.max) ? s.max : s.min;
+    html += `<div class="lg-title" title="${esc(s.valueLabel)}">${esc(displayLabel(s.valueLabel, 30)) || 'valeur'}</div>`;
+    if (hi <= lo) {
+      html += `<div class="lg-row"><i style="background:${SEQ[4]}"></i>${esc(valueText(s, lo))}</div>`;
+    } else {
+      html += `<div class="lg-grad" style="background:${gradientCss(s.diverging ? (DIVERGING[s.palette] || DIVERGING.red_blue_diverging_10_0) : SEQ)}"></div>`;
+      html += `<div class="lg-scale"><span>${valueText(s, lo)}</span>`
+           + `<span>${valueText(s, (lo + hi) / 2)}</span>`
+           + `<span>${valueText(s, hi)}</span></div>`;
+    }
+  } else {
+    html += `<b>${s.features.length} géométries</b>`;
+  }
+  if (s.truncated) html += `<div class="lg-warn">tronqué à ${s.features.length}</div>`;
+  lg.innerHTML = html;
+  box.appendChild(lg);
+}
+
+function pointInPoly(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    if ((yi > pt[1]) !== (yj > pt[1]) &&
+        pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function addTool(bar, label, title, onclick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.title = title;
+  b.onclick = onclick;
+  bar.appendChild(b);
+  return b;
+}
+function enableSelection(map, box, s, onClick, layers, bar) {
+  const overlay = document.createElement('div');
+  overlay.className = 'mapsel';
+  box.appendChild(overlay);
+  let mode = MAP_MODE, drag = null;
+  const setMode = m => {
+    mode = m; MAP_MODE = m;
+    rectBtn.classList.toggle('on', m === 'rect');
+    lassoBtn.classList.toggle('on', m === 'lasso');
+    map.getCanvas().style.cursor = m ? 'crosshair' : '';
+    if (m) map.dragPan.disable(); else map.dragPan.enable();
+    overlay.style.display = 'none'; overlay.innerHTML = '';
+  };
+  const rectBtn = addTool(bar, '▭', 'Sélection rectangulaire', () => setMode(mode === 'rect' ? null : 'rect'));
+  const lassoBtn = addTool(bar, '✎', 'Lasso', () => setMode(mode === 'lasso' ? null : 'lasso'));
+  addTool(bar, '⤢', 'Zoom sur la sélection', () => {
+    const st = selectionState(s.name);
+    if (!st) return;
+    const b = boundsOf(s.features.filter(f => matchesProps(f.properties || {}, st.fields)));
+    if (b) map.fitBounds(b, { padding: 30, duration: 400 });
+  });
+  addTool(bar, '✕', 'Effacer la sélection', () => { setMode(null); clearSelection(); });
+  if (mode) {
+    rectBtn.classList.add('on');
+    if (mode === 'lasso') lassoBtn.classList.add('on');
+    map.getCanvas().style.cursor = 'crosshair';
+    map.dragPan.disable();
+  }
+  const finish = feats => {
+    const seen = new Set(), out = [];
+    feats.forEach(f => {
+      const p = f.properties || {};
+      const k = JSON.stringify(p);
+      if (!seen.has(k)) { seen.add(k); out.push(p); }
+    });
+    box.__selAt = Date.now();
+    MAP_VIEWS[s.name] = { center: map.getCenter().toArray(), zoom: map.getZoom() };
+    if (out.length) onClick(out);
+  };
+  map.on('mousedown', e => {
+    if (!mode || (e.originalEvent && e.originalEvent.button !== 0)) return;
+    drag = { start: e.point, points: [e.point] };
+    overlay.style.display = 'block';
+    overlay.innerHTML = mode === 'rect'
+      ? '<div class="selrect"></div>'
+      : '<svg class="sellasso"><polyline fill="none" stroke="#1b6ef3" stroke-width="1.5" stroke-dasharray="4 3" points=""/></svg>';
+  });
+  map.on('mousemove', e => {
+    if (!drag) return;
+    drag.points.push(e.point);
+    if (mode === 'rect') {
+      const r = overlay.querySelector('.selrect');
+      const x0 = Math.min(drag.start.x, e.point.x), y0 = Math.min(drag.start.y, e.point.y);
+      r.style.left = x0 + 'px'; r.style.top = y0 + 'px';
+      r.style.width = Math.abs(e.point.x - drag.start.x) + 'px';
+      r.style.height = Math.abs(e.point.y - drag.start.y) + 'px';
+    } else {
+      overlay.querySelector('polyline').setAttribute('points',
+        drag.points.map(p => p.x + ',' + p.y).join(' '));
+    }
+  });
+  map.on('mouseup', e => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    overlay.style.display = 'none'; overlay.innerHTML = '';
+    if (mode === 'rect') {
+      const w = Math.abs(e.point.x - d.start.x), h = Math.abs(e.point.y - d.start.y);
+      if (w < 4 || h < 4) { box.__selAt = Date.now(); return; }
+      const bb = [[Math.min(d.start.x, e.point.x), Math.min(d.start.y, e.point.y)],
+                  [Math.max(d.start.x, e.point.x), Math.max(d.start.y, e.point.y)]];
+      finish(map.queryRenderedFeatures(bb, { layers }));
+    } else if (d.points.length > 2) {
+      const poly = d.points.map(p => [p.x, p.y]);
+      finish(map.queryRenderedFeatures({ layers }).filter(f => {
+        const c = firstCoord(f.geometry);
+        if (!c) return false;
+        const p = map.project(c);
+        return pointInPoly([p.x, p.y], poly);
+      }));
+    }
+  });
+}
+
+const RASTER_STYLE = {
+  version: 8,
+  sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256, attribution: '© OpenStreetMap' } },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+};
+
+function dashHasLegend(name) {
+  if (!state.dash) return false;
+  const db = WB.dashboards.find(x => x.name === state.dash);
+  return !!(db && db.zones.some(z => z.kind === 'legend' && z.sheet === name));
+}
+
+function renderMap(s, el, sheet) {
+  if (typeof maplibregl === 'undefined') {
+    el.innerHTML = '<div class="empty">Carte indisponible : MapLibre non chargé.</div>';
+    return;
+  }
+  const box = document.createElement('div');
+  box.className = 'map';
+  if (el.closest('.dash')) {
+    box.style.flex = '1';
+    box.style.minHeight = '0';
+    box.style.height = 'auto';
+  }
+  el.appendChild(box);
+  const map = new maplibregl.Map({
+    container: box, style: WB.map_style || RASTER_STYLE,
+    center: [2.35, 48.86], zoom: 8
+  });
+  box.__map = map;
+  box.__data = s;
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+  map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 90 }), 'bottom-right');
+  let ready = false;
+  map.on('moveend', () => {
+    if (ready) MAP_VIEWS[s.name] = { center: map.getCenter().toArray(), zoom: map.getZoom() };
+  });
+  const bar = document.createElement('div');
+  bar.className = 'maptools';
+  box.appendChild(bar);
+  addTool(bar, '⌖', 'Recentrer sur les données', () => {
+    const b = boundsOf(s.features);
+    if (b) map.fitBounds(b, { padding: 24, duration: 400 });
+  });
+  const color = mapColorExpr(s);
+  const sel = mapSelectionExpr(s);
+  const op = (full, dim) => sel ? ['case', sel, full, dim] : full;
+  const tint = base => sel ? ['case', sel, base, '#8f98a3'] : base;
+  const zoomRadius = ['interpolate', ['linear'], ['zoom'], 7, 2.6, 11, 4, 14, 6, 17, 9];
+  let radius = zoomRadius;
+  if (s.sizeField && Number.isFinite(s.sizeMin)) {
+    const lo = s.sizeMin, hi = Number.isFinite(s.sizeMax) && s.sizeMax > lo ? s.sizeMax : lo + 1;
+    radius = ['interpolate', ['linear'], ['coalesce', ['get', s.sizeField], lo], lo, 2, hi, 14];
+  }
+  const types = new Set(s.features.map(f => f.geometry.type));
+  const only = names => ['in', ['geometry-type'], ['literal', names]];
+  const has = suffix => [...types].some(t => t.includes(suffix));
+  let added = false, fallback = false;
+  map.on('error', () => { if (!added && !fallback) { fallback = true; map.setStyle(RASTER_STYLE); } });
+  const tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '280px' });
+  const addLayers = () => {
+    if (added) return;
+    added = true;
+    map.addSource('data', { type: 'geojson', data: { type: 'FeatureCollection', features: s.features } });
+    if (has('Polygon')) {
+      map.addLayer({ id: 'poly', type: 'fill', source: 'data',
+        filter: only(['Polygon', 'MultiPolygon']),
+        paint: { 'fill-color': tint(color), 'fill-opacity': op(0.35, 0.12),
+                 'fill-outline-color': sel ? ['case', sel, '#1b96ff', '#333'] : '#333' } });
+    }
+    if (has('LineString')) {
+      map.addLayer({ id: 'line', type: 'line', source: 'data',
+        filter: only(['LineString', 'MultiLineString']),
+        paint: { 'line-color': tint(color), 'line-opacity': op(0.8, 0.25),
+                 'line-width': sel ? ['case', sel, 2.5, 1] : 1.5 } });
+    }
+    if (has('Point')) {
+      map.addLayer({ id: 'pt', type: 'circle', source: 'data',
+        filter: only(['Point', 'MultiPoint']),
+        paint: { 'circle-radius': radius, 'circle-color': tint(color),
+                 'circle-opacity': op(1, 0.55),
+                 'circle-stroke-color': sel ? ['case', sel, '#1b96ff', '#fff'] : '#fff',
+                 'circle-stroke-width': sel ? ['case', sel, 1.5, 0.4] : 0.5 } });
+    }
+    const saved = MAP_VIEWS[s.name];
+    if (saved) map.jumpTo({ center: saved.center, zoom: saved.zoom });
+    else { const b = boundsOf(s.features); if (b) map.fitBounds(b, { padding: 24, duration: 0 }); }
+    const layers = ['poly', 'line', 'pt'].filter(id => map.getLayer(id));
+    layers.forEach(id => {
+      map.on('mousemove', id, evt => {
+        if (Date.now() - (box.__selAt || 0) < 250) return;
+        map.getCanvas().style.cursor = 'pointer';
+        tip.setLngLat(evt.lngLat).setHTML(tooltipHtml(s, evt.features[0].properties || {})).addTo(map);
+      });
+      map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; tip.remove(); });
+      map.on('click', id, evt => {
+        if (Date.now() - (box.__selAt || 0) < 250) return;
+        MAP_VIEWS[s.name] = { center: map.getCenter().toArray(), zoom: map.getZoom() };
+        const props = evt.features[0].properties || {};
+        const fields = {};
+        (s.details || []).forEach(k => {
+          if (props[k] !== undefined && props[k] !== null) fields[k] = [props[k]];
+        });
+        const act = actionFor(sheet, 'on-select');
+        if (act) dispatch(act, mapAliases(sheet, fields), sheet);
+        else if (sheet && hasAction(sheet)) dispatch(actionFor(sheet, 'on-select'), mapAliases(sheet, fields), sheet);
+      });
+      if (id === 'pt') {
+        map.on('mouseenter', 'pt', () => {});
+      }
+    });
+    if (sheet && hasAction(sheet)) {
+      enableSelection(map, box, s, feats => {
+        const act = actionFor(sheet, 'on-select');
+        if (!act) return;
+        const fields = {};
+        feats.forEach(p => (s.details || []).forEach(k => {
+          if (p[k] === undefined || p[k] === null) return;
+          if (!fields[k]) fields[k] = [];
+          if (!fields[k].some(v => String(v) === String(p[k]))) fields[k].push(p[k]);
+        }));
+        if (Object.keys(fields).length) dispatch(act, fields, sheet);
+      }, layers, bar);
+    }
+    ready = true;
+  };
+  map.on('style.load', addLayers);
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(box);
+    CLEANUPS.push(() => {
+      try { ro.disconnect(); } catch (e) {}
+      try { map.remove(); } catch (e) {}
+    });
+  } else {
+    CLEANUPS.push(() => { try { map.remove(); } catch (e) {} });
+  }
+  if (!dashHasLegend(s.name)) buildLegend(s, box);
+}
+
+// ---------------------------------------------------------------------------
+// rendu d'une feuille
+// ---------------------------------------------------------------------------
+function chartNaturalSize(spec) {
+  const base = (spec && spec.layer && spec.layer[0] && spec.layer[0].encoding)
+    || (spec && spec.encoding) || {};
+  const dimOf = ch => {
+    const e = base[ch];
+    return e && e.field && (e.type === 'nominal' || e.type === 'ordinal') ? e.field : null;
+  };
+  const xd = dimOf('x'), yd = dimOf('y');
+  if (!xd && !yd) return { width: 0, height: 0 };
+  const vals = (spec.data && spec.data.values) || [];
+  const count = f => new Set(vals.map(v => String(v[f] ?? ''))).size;
+  let w = 0, h = 0;
+  if (yd && !xd) h = count(yd) * 20 + 40;
+  if (xd && !yd) w = count(xd) * 30 + 40;
+  return { width: w, height: h };
+}
+function renderSheet(s, el, onClick, opts) {
+  opts = opts || {};
+  const inDash = !!el.closest('.dash');
+  if (s.title && !opts.noTitle) {
+    const h = document.createElement('div');
+    h.className = 'sheethead';
+    h.innerHTML = `<h2>${esc(s.title)}</h2><span class="sub">${s.total ?? ''} ligne(s)</span>`;
+    h.style.flex = '0 0 auto';
+    el.appendChild(h);
+  }
+  if (inDash) {
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    el.style.minHeight = '0';
+  }
+  if (s.kind === 'map') { renderMap(s, el, s); return; }
+  if (s.kind === 'chart') {
+    const c = document.createElement('div');
+    c.className = 'chart';
+    const inDash = !!el.closest('.dash');
+    const nat = chartNaturalSize(s.spec);
+    const fit = opts.fit || (inDash ? 'standard' : 'entire-view');
+    if (inDash) {
+      const zoneW = Math.max(120, el.clientWidth);
+      const zoneH = Math.max(120, el.clientHeight);
+      if (fit === 'standard') {
+        if (nat.width > zoneW) c.style.width = nat.width + 'px';
+        if (nat.height > zoneH) c.style.height = nat.height + 'px';
+      } else if (fit === 'fit-width') {
+        c.style.width = '100%';
+        if (nat.height > zoneH) c.style.height = nat.height + 'px';
+      } else if (fit === 'fit-height') {
+        if (nat.width > zoneW) c.style.width = nat.width + 'px';
+      }
+    } else {
+      c.style.height = (nat.height > 460 ? nat.height : 460) + 'px';
+      if (nat.width > 0 && nat.width > el.clientWidth) c.style.width = nat.width + 'px';
+    }
+    if (inDash) {
+      if (c.style.height) c.style.flex = '0 0 auto';
+      else { c.style.flex = '1'; c.style.minHeight = '0'; c.style.height = 'auto'; }
+    }
+    el.appendChild(c);
+    chart(s.spec, c, s, onClick);
+    return;
+  }
+  if (s.kind === 'crosstab') { renderCrosstab(s, el, s, onClick); return; }
+  if (s.kind === 'kpi') {
+    const d = document.createElement('div');
+    d.className = 'kpi';
+    if (inDash) { d.style.flex = '1'; d.style.minHeight = '0'; }
+    const v = document.createElement('div');
+    v.className = 'kv';
+    v.textContent = fmt(s.value, s.format);
+    const l = document.createElement('div');
+    l.className = 'kl';
+    l.textContent = displayLabel(s.label, 60);
+    l.title = s.label || '';
+    d.append(v, l);
+    el.appendChild(d);
+    return;
+  }
+  if (s.kind === 'notice') {
+    const d = document.createElement('div');
+    d.className = 'empty';
+    if (inDash) d.style.flex = '1';
+    d.textContent = s.message;
+    el.appendChild(d);
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'scroll';
+  if (inDash) {
+    wrap.style.flex = '1';
+    wrap.style.minHeight = '0';
+    wrap.style.maxHeight = 'none';
+  }
+  const t = document.createElement('table');
+  const thead = t.createTHead().insertRow();
+  (s.columns || []).forEach(c => {
+    const th = document.createElement('th');
+    const full = (s.labels && s.labels[c]) || c;
+    th.textContent = displayLabel(full, 46);
+    th.title = full;
+    if (s.formats && s.formats[c] && s.formats[c].kind !== 'date') th.className = 'num';
+    thead.appendChild(th);
+  });
+  const tb = t.createTBody();
+  (s.rows || []).forEach(r => {
+    const tr = tb.insertRow();
+    if (s.tooltip) tr.title = fillCustomTooltip(s.tooltip, r, s, false);
+    const cls = rowClass(s.name, r);
+    if (cls) tr.className = cls;
+    (s.columns || []).forEach(c => {
+      const td = tr.insertCell();
+      const isMeasure = String(c).includes(':') || !!(s.formats && s.formats[c]);
+      td.textContent = isMeasure ? fmt(r[c], s.formats && s.formats[c]) : fmtDim(c, r[c]);
+      if (typeof r[c] === 'number' || (s.formats && s.formats[c] && s.formats[c].kind !== 'date'))
+        td.className = 'num';
+    });
+  });
+  wrap.appendChild(t);
+  el.appendChild(wrap);
+}
+
+// ---------------------------------------------------------------------------
+// contrôles (paramètres + filtres)
+// ---------------------------------------------------------------------------
+function controlLabel(text, max) {
+  return displayLabel(text, max || 30);
+}
+function paramControl(p, onChange) {
+  const wrap = document.createElement('label');
+  wrap.className = 'ctl';
+  wrap.append(document.createTextNode(p.caption || p.name));
+  let el;
+  if (p.members && p.members.length) {
+    el = document.createElement('select');
+    p.members.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = (p.member_labels && (p.member_labels[m] || p.member_labels[labelOf(m)])) || labelOf(m);
+      if (m === state.params[p.name]) o.selected = true;
+      el.appendChild(o);
+    });
+  } else {
+    el = document.createElement('input');
+    el.type = p.datatype === 'date' || p.datatype === 'datetime' ? 'date'
+            : (p.datatype === 'integer' || p.datatype === 'real') ? 'number' : 'text';
+    el.value = labelOf(state.params[p.name] || '');
+  }
+  el.onchange = () => { state.params[p.name] = el.value; onChange(); };
+  wrap.appendChild(el);
+  return wrap;
+}
+function selectionModel(values, selected, exclude, none) {
+  const vals = (values || []).map(String);
+  if (none) return { vals, checked: new Set() };
+  const sel = new Set((selected || []).map(String));
+  const exc = new Set((exclude || []).map(String));
+  const all = sel.size === 0 && exc.size === 0;
+  const checked = new Set(all ? vals : (sel.size ? sel : vals.filter(v => !exc.has(v))));
+  return { vals, checked };
+}
+
+function emitSelection(vals, checked, onChange) {
+  const n = checked.size;
+  if (n === 0) return onChange({ none: true });
+  if (n === vals.length) return onChange([]);
+  if (n > vals.length / 2) return onChange({ exclude: vals.filter(v => !checked.has(v)) });
+  return onChange([...checked]);
+}
+
+function valueLabel(labels, v, field) {
+  return (labels && (labels[v] || labels[labelOf(v)])) || fmtDim(field, v) || labelOf(v);
+}
+
+function checkList(values, selected, exclude, none, onChange, labels, field) {
+  const { vals, checked } = selectionModel(values, selected, exclude, none);
+  const box = document.createElement('div');
+  box.className = 'checklist';
+  const allLabel = document.createElement('label');
+  allLabel.className = 'all';
+  const cbAll = document.createElement('input');
+  cbAll.type = 'checkbox';
+  cbAll.checked = vals.length > 0 && checked.size === vals.length;
+  allLabel.append(cbAll, document.createTextNode('(Tous)'));
+  box.appendChild(allLabel);
+  const items = [];
+  if (vals.length > 12) {
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'clsearch';
+    search.placeholder = 'Rechercher…';
+    search.oninput = () => {
+      const q = search.value.toLowerCase();
+      items.forEach(([v, cb]) => {
+        cb.closest('label').style.display = !q || valueLabel(labels, v, field).toLowerCase().includes(q) ? '' : 'none';
+      });
+    };
+    box.appendChild(search);
+  }
+  vals.forEach(v => {
+    const l = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked.has(v);
+    cb.onchange = () => {
+      if (cb.checked) checked.add(v); else checked.delete(v);
+      cbAll.checked = vals.length > 0 && checked.size === vals.length;
+      emitSelection(vals, checked, onChange);
+    };
+    l.append(cb, document.createTextNode(valueLabel(labels, v, field)));
+    box.appendChild(l);
+    items.push([v, cb]);
+  });
+  cbAll.onchange = () => {
+    if (cbAll.checked) vals.forEach(v => checked.add(v)); else checked.clear();
+    items.forEach(([v, cb]) => { cb.checked = checked.has(v); });
+    emitSelection(vals, checked, onChange);
+  };
+  return box;
+}
+
+function multiSelect(values, selected, exclude, none, onChange, labels, field) {
+  const { vals, checked } = selectionModel(values, selected, exclude, none);
+  const box = document.createElement('div');
+  box.className = 'ms';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'msbtn';
+  const panel = document.createElement('div');
+  panel.className = 'mspanel';
+  const update = () => {
+    btn.textContent = checked.size === 0 ? '(aucun)'
+      : checked.size === vals.length ? '(tous)'
+      : checked.size <= 2 ? [...checked].map(v => valueLabel(labels, v, field)).join(', ')
+      : checked.size + ' valeurs';
+    btn.title = btn.textContent;
+  };
+  const all = document.createElement('label');
+  all.className = 'all';
+  const cbAll = document.createElement('input');
+  cbAll.type = 'checkbox';
+  cbAll.checked = vals.length > 0 && checked.size === vals.length;
+  cbAll.onchange = () => {
+    if (cbAll.checked) vals.forEach(v => checked.add(v)); else checked.clear();
+    panel.querySelectorAll('input[data-v]').forEach(i => { i.checked = checked.has(i.dataset.v); });
+    update();
+    emitSelection(vals, checked, onChange);
+  };
+  all.append(cbAll, document.createTextNode('(Tous)'));
+  panel.appendChild(all);
+  if (vals.length > 20) {
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'clsearch';
+    search.placeholder = 'Rechercher…';
+    search.oninput = () => {
+      const q = search.value.toLowerCase();
+      panel.querySelectorAll('label[data-v]').forEach(l => {
+        l.style.display = !q || l.dataset.label.toLowerCase().includes(q) ? '' : 'none';
+      });
+    };
+    panel.appendChild(search);
+  }
+  vals.forEach(v => {
+    const l = document.createElement('label');
+    l.dataset.v = v;
+    l.dataset.label = valueLabel(labels, v, field);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.v = v;
+    cb.checked = checked.has(v);
+    cb.onchange = () => {
+      if (cb.checked) checked.add(v); else checked.delete(v);
+      cbAll.checked = vals.length > 0 && checked.size === vals.length;
+      update();
+      emitSelection(vals, checked, onChange);
+    };
+    l.append(cb, document.createTextNode(valueLabel(labels, v, field)));
+    panel.appendChild(l);
+  });
+  btn.onclick = e => { e.stopPropagation(); panel.classList.toggle('on'); };
+  document.addEventListener('click', e => { if (!box.contains(e.target)) panel.classList.remove('on'); });
+  box.append(btn, panel);
+  update();
+  return box;
+}
+
+function sliderControl(values, selected, onChange, labels, field) {
+  const vals = (values || []).map(String);
+  const box = document.createElement('div');
+  box.className = 'sliderctl';
+  const range = document.createElement('input');
+  range.type = 'range';
+  range.min = 0;
+  range.max = Math.max(0, vals.length - 1);
+  range.step = 1;
+  const cur = (selected || []).map(String);
+  let idx = cur.length ? vals.indexOf(cur[0]) : -1;
+  if (idx < 0) idx = 0;
+  range.value = idx;
+  const lab = document.createElement('span');
+  const paint = () => { lab.textContent = vals.length ? valueLabel(labels, vals[Number(range.value)], field) : '—'; };
+  paint();
+  range.oninput = paint;
+  range.onchange = () => { if (vals.length) onChange([vals[Number(range.value)]]); };
+  box.append(range, lab);
+  return box;
+}
+
+function filterControl(f, onChange) {
+  if (f.expression) return null;   // filtre par formule, piloté par les paramètres
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  wrap.append(document.createTextNode(controlLabel(f.label || f.field, 34)));
+  const cls = f.class || 'categorical';
+  if (cls === 'quantitative' || (f.range && (f.range.min != null || f.range.max != null))) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lo = document.createElement('input'); lo.type = 'number'; lo.placeholder = 'min';
+    const hi = document.createElement('input'); hi.type = 'number'; hi.placeholder = 'max';
+    if (f.range) { if (f.range.min != null) lo.value = f.range.min; if (f.range.max != null) hi.value = f.range.max; }
+    const go = document.createElement('button'); go.textContent = 'OK';
+    go.onclick = () => onChange({ range: { min: lo.value || null, max: hi.value || null } });
+    row.append(lo, hi, go);
+    wrap.appendChild(row);
+  } else if (cls === 'relative-date' || f.relative) {
+    const el = document.createElement('select');
+    const periods = [['day', 'jour'], ['week', 'semaine'], ['month', 'mois'],
+                     ['quarter', 'trimestre'], ['year', 'année']];
+    const cur = (f.relative && f.relative.period) || 'month';
+    periods.forEach(([v, t]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = 'dernier ' + t;
+      if (v === cur) o.selected = true;
+      el.appendChild(o);
+    });
+    el.onchange = () => onChange({ relative: { period: el.value, value: '-1' } });
+    wrap.appendChild(el);
+  } else if (cls === 'wildcard' || f.wildcard) {
+    const el = document.createElement('input');
+    el.placeholder = 'texte…';
+    el.onchange = () => onChange({ wildcard: { match: '*' + el.value + '*' } });
+    wrap.appendChild(el);
+  } else {
+    const mode = f.mode || 'list';
+    if (mode === 'slider') {
+      wrap.appendChild(sliderControl(f.values || [], f.selected || [], onChange, f.valueLabels, f.field));
+      return wrap;
+    }
+    if (mode === 'checkdropdown') {
+      wrap.appendChild(multiSelect(f.values || [], f.selected || [], f.exclude || [],
+                                   f.none, onChange, f.valueLabels, f.field));
+      return wrap;
+    }
+    if (mode === 'dropdown' || mode === 'compact') {
+      const el = document.createElement('select');
+      const all = document.createElement('option');
+      all.value = '';
+      all.textContent = '(tous)';
+      el.appendChild(all);
+      (f.values || []).forEach(v => {
+        const o = document.createElement('option');
+        o.value = String(v);
+        o.textContent = valueLabel(f.valueLabels, v, f.field);
+        if ((f.selected || []).some(x => sameValue(x, v))) o.selected = true;
+        el.appendChild(o);
+      });
+      el.onchange = () => {
+        const vals = [...el.selectedOptions].map(o => o.value).filter(v => v !== '');
+        onChange(vals.length ? vals : []);
+      };
+      wrap.appendChild(el);
+      return wrap;
+    }
+    // mode absent, 'list' : liste multi-sélection, comportement Tableau par défaut
+    wrap.appendChild(checkList(f.values || [], f.selected || [], f.exclude || [],
+                               f.none, onChange, f.valueLabels, f.field));
+  }
+  return wrap;
+}
+
+function buildControls(sheet, container) {
+  const bar = document.createElement('div');
+  bar.className = 'controls';
+  (WB.parameters || []).forEach(p => {
+    bar.appendChild(paramControl(p, () => refreshSheet(sheet.name)));
+  });
+  (sheet.filters || []).forEach(f => {
+    const lab = (sheet.labels && sheet.labels[f.field]) || f.field;
+    const ctl = filterControl(Object.assign({}, f, { label: lab }), val => {
+      const patch = {};
+      patch[f.field] = val;
+      refreshSheet(sheet.name, patch);
+    });
+    if (ctl) bar.appendChild(ctl);
+  });
+  if (bar.children.length) container.appendChild(bar);
+}
+
+function storyFilterMap(list) {
+  const out = {};
+  (list || []).forEach(f => {
+    if (!f || !f.field || f.expression) return;
+    if (f.range) out[f.field] = { range: f.range };
+    else if (f.relative) out[f.field] = { relative: f.relative };
+    else if (f.wildcard) out[f.field] = { wildcard: f.wildcard };
+    else if (f.top) out[f.field] = { top: f.top };
+    else if (f.members && f.members.length) out[f.field] = f.members;
+    else if (f.exclude && f.exclude.length) out[f.field] = { exclude: f.exclude };
+    else out[f.field] = [];
+  });
+  return out;
+}
+async function apiSheet(name, extra) {
+  const story = (state.storyFilters && state.storyFilters[name])
+    ? storyFilterMap(state.storyFilters[name]) : {};
+  const body = {
+    sheet: name,
+    params: state.params,
+    filters: Object.assign({}, state.dashFilters, story, (extra && extra.filters) || {}),
+    drill: state.drill[name] || [],
+  };
+  if (state.filter && state.filter.source !== name) {
+    Object.assign(body.filters, state.filter.fields);
+  }
+  const r = await fetch(withKey(WB.apiBase || ('/api/sheet/' + WB.id)), {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function refreshSheet(name, filterPatch) {
+  const idx = WB.sheets.findIndex(x => x.name === name);
+  if (idx < 0) return;
+  try {
+    const s = await apiSheet(name, { filters: filterPatch });
+    WB.sheets[idx] = s;
+    const vi = views.findIndex(v => v.kind === 'sheet' && v.data.name === name);
+    if (vi >= 0) views[vi].data = s;
+    show(state.view);
+  } catch (e) {
+    toast('Erreur : ' + String(e.message).slice(0, 120));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// dashboard
+// ---------------------------------------------------------------------------
+function zoneStyle(z) {
+  return `left:${z.x / 1000}%;top:${z.y / 1000}%;width:${z.w / 1000}%;height:${z.h / 1000}%`;
+}
+function applyZoneStyle(zone, z) {
+  const st = z.style || {};
+  if (st.padding != null) zone.style.padding = Number(st.padding) + 'px';
+  if (st.margin != null) zone.style.margin = Number(st.margin) + 'px';
+  if (st['background-color']) zone.style.background = st['background-color'];
+  if (st['border-style'] && st['border-style'] !== 'none') {
+    zone.style.borderStyle = st['border-style'];
+    zone.style.borderColor = st['border-color'] || '#d9dde3';
+    zone.style.borderWidth = (st['border-width'] || '1') + 'px';
+  }
+}
+function deviceName(d) {
+  if (!d.device_layouts) return null;
+  if (window.innerWidth < 720 && d.device_layouts.Phone) return 'Phone';
+  if (window.innerWidth < 1100 && d.device_layouts.Tablet) return 'Tablet';
+  return null;
+}
+function currentDevice(d) {
+  const n = deviceName(d);
+  return n ? d.device_layouts[n] : null;
+}
+function renderSizeLegend(z, zone) {
+  const sheet = WB.sheets.find(s => s.name === z.sheet);
+  if (!sheet) return;
+  let field = z.field, lo = null, hi = null, label = null;
+  if (sheet.kind === 'map') {
+    field = sheet.sizeField; lo = sheet.sizeMin; hi = sheet.sizeMax;
+    label = sheet.sizeLabel || sheet.valueLabel;
+  } else if (sheet.kind === 'chart') {
+    const spec = sheet.spec || {};
+    const enc = spec.encoding || (spec.layer && spec.layer[0] && spec.layer[0].encoding) || {};
+    const size = enc.size;
+    if (!size) return;
+    field = size.field; label = size.title || field;
+    const vals = (spec.data && spec.data.values) || [];
+    const nums = vals.map(v => Number(v[field])).filter(Number.isFinite);
+    if (nums.length) { lo = Math.min(...nums); hi = Math.max(...nums); }
+  }
+  if (!field || !Number.isFinite(lo)) return;
+  const box = document.createElement('div');
+  box.className = 'maplegend';
+  const sizes = [6, 10, 14, 18];
+  const span = Number.isFinite(hi) && hi > lo ? hi - lo : 1;
+  box.innerHTML = `<div class="lg-title">${esc(displayLabel(label || field, 30))}</div>`
+    + sizes.map((s, i) => {
+        const v = lo + span * (i / (sizes.length - 1));
+        return `<div class="lg-row"><i style="width:${s}px;height:${s}px;background:#4E79A7;border-radius:50%;display:inline-block;flex:0 0 auto"></i>${esc(fmt(v))}</div>`;
+      }).join('');
+  zone.appendChild(box);
+}
+function renderTextZone(z, zone) {
+  const t = document.createElement('div');
+  t.className = 'zt';
+  if (z.halign) t.style.textAlign = z.halign;
+  if (z.valign) {
+    zone.style.display = 'flex';
+    zone.style.alignItems = z.valign === 'bottom' ? 'flex-end'
+      : z.valign === 'middle' ? 'center' : 'flex-start';
+  }
+  if (z.runs && z.runs.length) {
+    z.runs.forEach(r => {
+      const span = document.createElement('span');
+      span.textContent = r.text;
+      if (r.bold) span.style.fontWeight = '600';
+      if (r.italic) span.style.fontStyle = 'italic';
+      if (r.underline) span.style.textDecoration = 'underline';
+      if (r.size) span.style.fontSize = (Number(r.size) || 12) + 'px';
+      if (r.color) span.style.color = r.color;
+      if (r.font) span.style.fontFamily = r.font;
+      if (r.align) t.style.textAlign = r.align;
+      t.appendChild(span);
+    });
+  } else {
+    t.textContent = z.text;
+  }
+  zone.appendChild(t);
+}
+function crosstabLegendBox(sheet) {
+  const ci = sheet && sheet.color;
+  if (!ci) return null;
+  const box = document.createElement('div');
+  box.className = 'maplegend';
+  if (ci.type === 'measure') {
+    const nums = (sheet.records || []).map(r => Number(r[ci.field])).filter(Number.isFinite);
+    if (!nums.length) return null;
+    const lo = Math.min(...nums), hi = Math.max(...nums);
+    box.innerHTML = `<div class="lg-title">${esc(displayLabel(ci.label || ci.field, 30))}</div>`
+      + `<div class="lg-grad" style="background:${gradientCss(SEQ)}"></div>`
+      + `<div class="lg-scale"><span>${fmt(lo, ci.format)}</span>`
+      + `<span>${fmt((lo + hi) / 2, ci.format)}</span><span>${fmt(hi, ci.format)}</span></div>`;
+  } else {
+    const cats = [...new Set((sheet.records || []).map(r => String(r[ci.field] ?? '')))].slice(0, 10);
+    const cols = paletteColors((sheet.style || {}).palette, (sheet.style || {}).reverse);
+    box.innerHTML = `<div class="lg-title">${esc(displayLabel(ci.label || ci.field, 30))}</div>`
+      + cats.map((c, i) => `<div class="lg-row"><i style="background:${cols[i % cols.length]}"></i>${esc(c)}</div>`).join('');
+  }
+  return box;
+}
+function renderLegendZone(z, zone) {
+  const sheet = WB.sheets.find(s => s.name === z.sheet);
+  if (!sheet) return;
+  if (sheet.kind === 'map') { buildLegend(sheet, zone); return; }
+  if (sheet.kind === 'crosstab' && sheet.color) {
+    const box = crosstabLegendBox(sheet);
+    if (box) zone.appendChild(box);
+    return;
+  }
+  if (sheet.kind === 'chart') {
+    const spec = sheet.spec || {};
+    const enc = spec.encoding || {};
+    const color = enc.color || (spec.layer && spec.layer[0] && spec.layer[0].encoding && spec.layer[0].encoding.color);
+    if (!color) return;
+    const box = document.createElement('div');
+    box.className = 'maplegend';
+    const cols = paletteColors((sheet.style || {}).palette, (sheet.style || {}).reverse);
+    const vals = (spec.data && spec.data.values) || [];
+    if (color.type === 'quantitative') {
+      const nums = vals.map(v => Number(v[color.field])).filter(Number.isFinite);
+      const lo = Math.min(...nums), hi = Math.max(...nums);
+      box.innerHTML = `<div class="lg-title">${esc(displayLabel(color.title || color.field, 30))}</div>`
+        + `<div class="lg-grad" style="background:${gradientCss(SEQ)}"></div>`
+        + `<div class="lg-scale"><span>${fmt(lo)}</span><span>${fmt(hi)}</span></div>`;
+    } else {
+      const cats = [...new Set(vals.map(v => String(v[color.field] ?? '')))].slice(0, 10);
+      box.innerHTML = `<div class="lg-title">${esc(displayLabel(color.title || color.field, 30))}</div>`
+        + cats.map((c, i) => `<div class="lg-row"><i style="background:${cols[i % cols.length]}"></i>${esc(c)}</div>`).join('');
+    }
+    zone.appendChild(box);
+  }
+}
+function renderDash(d, el) {
+  state.dash = d.name;
+  actionBanner(el);
+  if (d.title) {
+    const h = document.createElement('div');
+    h.className = 'sheethead';
+    h.innerHTML = `<h2>${esc(d.title)}</h2>`;
+    el.appendChild(h);
+  }
+  if (d.story && d.story.length) { renderStory(d, el); return; }
+
+  const dev = currentDevice(d);
+  const zones = dev ? dev.zones : d.zones;
+  const width = dev ? dev.width : (d.width || 1000);
+  const height = dev ? dev.height : (d.height || 800);
+  const fit = dev ? 'width'
+    : (state.dashFit || (d.sizing === 'automatic' ? 'window' : 'width'));
+  const box = document.createElement('div');
+  box.className = 'dash';
+  if (dev || fit === 'width') {
+    box.style.aspectRatio = width + ' / ' + height;
+  } else if (fit === 'fixed') {
+    box.style.aspectRatio = width + ' / ' + height;
+    box.style.maxWidth = width + 'px';
+    box.style.margin = '0 auto';
+  } else {
+    const story = el.parentElement && el.parentElement.querySelector('.storynav');
+    box.style.height = 'calc(100vh - ' + (story ? 200 : 160) + 'px)';
+    box.style.minHeight = '480px';
+  }
+  if (d.background) box.style.background = d.background;
+  const pending = [];
+  zones.forEach(z => {
+    const zone = document.createElement('div');
+    zone.className = 'zone';
+    zone.style.cssText = zoneStyle(z);
+    applyZoneStyle(zone, z);
+    box.appendChild(zone);
+    if (z.kind === 'text') { renderTextZone(z, zone); return; }
+    if (z.kind === 'empty') return;
+    if (z.kind === 'image') {
+      const img = document.createElement('img');
+      const src = (z.url && /^(https?:|data:)/i.test(z.url))
+        ? z.url : withKey(WB.assetBase || ('/asset/' + WB.id + '/'))
+          + encodeURI(z.path || z.url || '');
+      img.src = src;
+      img.style.cssText = 'width:100%;height:100%;object-fit:' + (z.scaled ? 'cover' : 'contain')
+        + ';object-position:center;';
+      zone.appendChild(img);
+      return;
+    }
+    if (z.kind === 'web') {
+      const f = document.createElement('iframe');
+      f.src = z.url;
+      f.style.cssText = 'width:100%;height:100%;border:0;';
+      zone.appendChild(f);
+      return;
+    }
+    if (z.kind === 'button') {
+      const b = document.createElement('button');
+      b.textContent = z.text;
+      b.style.cssText = 'width:100%;height:100%;border:1px solid #c9ced6;background:#fff;border-radius:6px;cursor:pointer;font:13px system-ui;';
+      b.onclick = () => {
+        const i = views.findIndex(v => v.label === z.target || (v.data && v.data.name === z.target));
+        if (i >= 0) show(i);
+      };
+      zone.appendChild(b);
+      return;
+    }
+    if (z.kind === 'param') {
+      const p = (WB.parameters || []).find(x => x.name === z.param);
+      if (!p) return;
+      zone.appendChild(paramControl(p, () => show(state.view)));
+      return;
+    }
+    if (z.kind === 'filter') {
+      const sheet = WB.sheets.find(s => s.name === z.sheet);
+      const f = sheet && (sheet.filters || []).find(x => x.field === z.field);
+      if (!f) {
+        const t = document.createElement('div');
+        t.className = 'zt';
+        t.textContent = displayLabel(z.field, 30);
+        zone.appendChild(t);
+        return;
+      }
+      const cur = state.dashFilters[z.field];
+      const ff = Object.assign({}, f, {
+        mode: z.mode,
+        label: (sheet.labels && sheet.labels[z.field]) || z.field,
+      });
+      const storyF = (state.storyFilters && state.storyFilters[z.sheet]) || [];
+      const sf = storyF.find(x => x.field === z.field);
+      if (Array.isArray(cur)) {
+        ff.selected = cur;
+      } else if (cur && cur.exclude) {
+        ff.selected = [];
+        ff.exclude = cur.exclude;
+        ff.none = false;
+      } else if (cur && cur.none) {
+        ff.selected = [];
+        ff.exclude = [];
+        ff.none = true;
+      } else if (sf) {
+        if (sf.members && sf.members.length) ff.selected = sf.members;
+        else if (sf.exclude && sf.exclude.length) ff.exclude = sf.exclude;
+      }
+      const ctl = filterControl(ff, val => {
+        state.dashFilters[z.field] = val;
+        show(state.view);
+      });
+      if (ctl) zone.appendChild(ctl);
+      return;
+    }
+    if (z.kind === 'legend') { renderLegendZone(z, zone); return; }
+    if (z.kind === 'size') { renderSizeLegend(z, zone); return; }
+    if (z.kind === 'sheet') {
+      const sheet = WB.sheets.find(s => s.name === z.sheet);
+      if (!sheet) return;
+      const fit = (d.viewpoints || {})[z.sheet] || 'standard';
+      if (fit !== 'entire-view') zone.style.overflow = 'auto';
+      const inner = document.createElement('div');
+      zone.appendChild(inner);
+      pending.push([sheet, inner, Object.assign({}, z, { fit })]);
+      return;
+    }
+  });
+  el.appendChild(box);
+  requestAnimationFrame(() => pending.forEach(([s, inner, z]) => {
+    const clickable = hasAction(s);
+    const filtered = state.filter && state.filter.source !== s.name;
+    const storyF = state.storyFilters && state.storyFilters[s.name];
+    const opts = { noTitle: z.show_title === false, fit: z.fit };
+    if (filtered || Object.keys(state.dashFilters).length || storyF) {
+      loadSheet(s.name, inner, clickable ? (fields => {
+        const act = actionFor(s, 'on-select');
+        if (act) dispatch(act, fields, s);
+      }) : null, opts);
+    } else {
+      renderSheet(s, inner, clickable ? (fields => {
+        const act = actionFor(s, 'on-select');
+        if (act) dispatch(act, fields, s);
+      }) : null, opts);
+    }
+  }));
+}
+async function loadSheet(name, el, onClick, opts) {
+  el.innerHTML = '<div class="loading">Chargement…</div>';
+  try {
+    const s = await apiSheet(name);
+    el.innerHTML = '';
+    renderSheet(s, el, onClick, Object.assign({ noTitle: true }, opts || {}));
+  } catch (e) {
+    el.innerHTML = '<div class="empty">Feuille indisponible</div>';
+    console.warn(name, e);
+  }
+}
+function renderStory(d, el) {
+  const key = d.name;
+  let cur = state.story[key] || 0;
+  if (cur >= d.story.length) cur = 0;
+  const nav = document.createElement('div');
+  nav.className = 'storynav';
+  d.story.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.textContent = p.caption;
+    b.classList.toggle('on', i === cur);
+    b.onclick = () => { state.story[key] = i; show(state.view); };
+    nav.appendChild(b);
+  });
+  el.appendChild(nav);
+  const point = d.story[cur] || {};
+  state.storyFilters = point.filters || {};
+  const target = point.sheet;
+  const dash = WB.dashboards.find(x => x.name === target);
+  const sheet = WB.sheets.find(x => x.name === target);
+  if (dash) {
+    const holder = document.createElement('div');
+    el.appendChild(holder);
+    renderDash(dash, holder);
+  } else if (sheet) {
+    if (state.storyFilters[sheet.name]) {
+      const holder = document.createElement('div');
+      el.appendChild(holder);
+      loadSheet(sheet.name, holder, null, { noTitle: false });
+    } else {
+      renderSheet(sheet, el);
+    }
+  } else {
+    el.innerHTML += '<div class="empty">Étape sans contenu.</div>';
+  }
+}
+// ---------------------------------------------------------------------------
+// menus contextuels
+// ---------------------------------------------------------------------------
+function showMenu(x, y, action, fields, sheet) {
+  document.querySelectorAll('.menu').forEach(m => m.remove());
+  const m = document.createElement('div');
+  m.className = 'menu';
+  m.style.left = x + 'px';
+  m.style.top = y + 'px';
+  const b = document.createElement('button');
+  b.textContent = action.caption || 'Appliquer l\'action';
+  b.onclick = () => { m.remove(); dispatch(action, fields, sheet); };
+  m.appendChild(b);
+  document.body.appendChild(m);
+  setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+}
+
+// ---------------------------------------------------------------------------
+// navigation / export
+// ---------------------------------------------------------------------------
+function show(i) {
+  state.view = i;
+  [...tabs.children].forEach((b, j) => b.classList.toggle('on', j === i));
+  CLEANUPS.splice(0).forEach(fn => { try { fn(); } catch (e) {} });
+  main.innerHTML = '';
+  const v = views[i];
+  if (!v) return;
+  if (!(v.kind === 'dash' && v.data.story && v.data.story.length)) state.storyFilters = {};
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  main.appendChild(panel);
+  if (v.kind === 'dash') {
+    const fit = state.dashFit || (v.data.sizing === 'automatic' ? 'window' : 'width');
+    document.getElementById('dashfit').value = fit;
+    renderDash(v.data, panel);
+  } else {
+    state.dash = null;
+    actionBanner(panel);
+    buildControls(v.data, panel);
+    const clickable = hasAction(v.data);
+    renderSheet(v.data, panel, clickable ? (fields => {
+      const act = actionFor(v.data, 'on-select');
+      if (act) dispatch(act, fields, v.data);
+    }) : null);
+  }
+}
+
+document.getElementById('dashfit').onchange = e => {
+  state.dashFit = e.target.value;
+  const v = views[state.view];
+  if (v && v.kind === 'dash') show(state.view);
+};
+
+let lastDevice = null;
+window.addEventListener('resize', debounce(() => {
+  const v = views[state.view];
+  if (!v || v.kind !== 'dash' || (v.data.story && v.data.story.length)) return;
+  const n = deviceName(v.data);
+  if (n !== lastDevice) { lastDevice = n; show(state.view); }
+}, 250));
+
+views.forEach((v, i) => {
+  const b = document.createElement('button');
+  b.textContent = v.label;
+  b.dataset.label = v.label.toLowerCase();
+  b.onclick = () => show(i);
+  tabs.appendChild(b);
+});
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  [...tabs.children].forEach(b => {
+    b.style.display = !q || b.dataset.label.includes(q) ? '' : 'none';
+  });
+});
+
+document.getElementById('btn-csv').onclick = () => {
+  const v = views[state.view];
+  const name = v && v.kind === 'sheet' ? v.data.name : null;
+  if (!name) { toast('Sélectionnez une feuille (pas un dashboard)'); return; }
+  window.location = withKey((WB.csvBase || ('/api/csv/' + WB.id)) + '/' + encodeURIComponent(name));
+};
+document.getElementById('btn-png').onclick = async () => {
+  const panel = main.querySelector('.panel');
+  if (!panel) return;
+  try {
+    const canvas = await html2canvas(panel, { backgroundColor: '#fff', scale: 2, useCORS: true });
+    const a = document.createElement('a');
+    a.download = (WB.title || 'tableau') + '.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  } catch (e) { toast('Export PNG impossible'); }
+};
+document.getElementById('btn-print').onclick = () => window.print();
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.key === 'ArrowLeft' && state.view > 0) show(state.view - 1);
+  if (e.key === 'ArrowRight' && state.view < views.length - 1) show(state.view + 1);
+});
+
+if (WB.warnings && WB.warnings.length) {
+  const w = document.createElement('details');
+  w.className = 'warn';
+  const sum = document.createElement('summary');
+  sum.textContent = WB.warnings.length + ' avertissement(s) — certaines feuilles peuvent être incomplètes';
+  const ul = document.createElement('ul');
+  WB.warnings.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+  w.append(sum, ul);
+  main.parentNode.insertBefore(w, main);
+}
+
+if (WB.openSheet) {
+  const q = String(WB.openSheet).toLowerCase();
+  const i = views.findIndex(v => v.label.toLowerCase() === q);
+  if (i >= 0) show(i);
+  else if (views.length) show(0);
+} else if (views.length) show(0);
+else main.innerHTML = '<div class="empty">Aucune feuille dans ce classeur.</div>';
+</script>
+</body>
+</html>

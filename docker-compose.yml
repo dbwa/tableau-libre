@@ -1,0 +1,32 @@
+services:
+  reader:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # Remplaçable par un style MapTiler ou OpenMapTiles auto-hébergé.
+      MAP_STYLE_URL: ${MAP_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}
+      # Mot de passe global optionnel du lecteur public.
+      ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
+      # Durée d'inactivité d'une session publique (heures).
+      PUBLIC_TTL_HOURS: ${PUBLIC_TTL_HOURS:-4}
+      # Plafond global des sessions publiques (octets) et classeurs par session.
+      MAX_PUBLIC_BYTES: ${MAX_PUBLIC_BYTES:-5368709120}
+      PUBLIC_MAX_FILES: ${PUBLIC_MAX_FILES:-20}
+      MAX_FILES: ${MAX_FILES:-200}
+      MAX_CACHE: ${MAX_CACHE:-64}
+      # Quota par compte (octets). 2147483648 = 2 Go.
+      DEFAULT_QUOTA_BYTES: ${DEFAULT_QUOTA_BYTES:-2147483648}
+      # URL absolue derrière un proxy (liens de partage, iframe, API).
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # Mettre 1 derrière HTTPS pour des cookies Secure.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      # Mettre 1 uniquement derrière un reverse proxy (Apache/Nginx/Caddy).
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      # Comptes promus admin (séparés par des virgules).
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Laisser vide pour générer une clé dans data/.secret.
+      SECRET_KEY: ${SECRET_KEY:-}
+    restart: unless-stopped
