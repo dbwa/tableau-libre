@@ -1549,18 +1549,25 @@ class Workbook:
         raise TWBXError("aucune source avec extrait")
 
     # -- rendu --------------------------------------------------------------- #
-    def render(self) -> dict:
+    def render(self, lazy: bool = False) -> dict:
         with self._lock:
             self.warnings = []
-            return self._render_locked()
+            return self._render_locked(lazy)
 
-    def _render_locked(self) -> dict:
-        sheets = []
-        for s in self.sheets:
-            try:
-                sheets.append(self._render_sheet(s))
-            except Exception as exc:
-                self.warnings.append(f"{s.name} : {exc}")
+    def _render_locked(self, lazy: bool = False) -> dict:
+        if lazy:
+            # gros classeurs : les feuilles seront rendues à la demande par l'API
+            sheets = [{"name": s.name, "title": self._title_for(s),
+                       "tab_color": s.tab_color, "kind": "pending",
+                       "labels": {}, "filters": [], "total": 0}
+                      for s in self.sheets]
+        else:
+            sheets = []
+            for s in self.sheets:
+                try:
+                    sheets.append(self._render_sheet(s))
+                except Exception as exc:
+                    self.warnings.append(f"{s.name} : {exc}")
         return {
             "sheets": sheets,
             "dashboards": [{"name": d.name, "title": d.title, "zones": d.zones,
@@ -1573,6 +1580,7 @@ class Workbook:
             "parameters": self.param_meta,
             "actions": self.actions,
             "warnings": list(dict.fromkeys(self.warnings)),
+            "lazy": lazy,
         }
 
     def _render_sheet(self, s: Sheet) -> dict:

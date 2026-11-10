@@ -8,16 +8,17 @@
   :root { --bd:#e3e6ea; --ink:#1b1b1b; --muted:#6b7280; --accent:#1b6ef3; --bg:#fafbfc; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ink); background:var(--bg); }
-  header { display:flex; align-items:center; gap:14px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--bd); position:sticky; top:0; z-index:20; }
+  header { display:flex; align-items:center; gap:8px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--bd); position:sticky; top:0; z-index:20; }
   header a { color:var(--muted); text-decoration:none; font-size:13px; white-space:nowrap; flex:0 0 auto; }
   header a:hover { color:var(--accent); }
   .embed header { padding:6px 10px; }
+  @media (max-width: 1250px) { #expiry { display:none !important; } }
   .embed header #backlink, .embed header #manage, .embed #expiry,
   .embed #endsession { display:none !important; }
   #endsession { border:1px solid #f0b8b2; background:#fff; color:#b42318;
     border-radius:999px; padding:2px 9px; font:11px system-ui; cursor:pointer; }
   #endsession:hover { background:#fff1f0; }
-  #wbname { font-weight:600; font-size:13px; white-space:nowrap; flex:0 0 auto; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  #wbname { font-weight:600; font-size:13px; white-space:nowrap; flex:0 1 220px; min-width:120px; overflow:hidden; text-overflow:ellipsis; }
   nav { display:flex; gap:3px; flex:1 1 auto; overflow-x:auto; white-space:nowrap; scrollbar-width:thin; }
   nav button { flex:0 0 auto; border:0; background:transparent; padding:6px 11px; border-radius:7px; cursor:pointer; font:inherit; color:var(--muted); }
   nav button:hover { background:#f1f3f6; }
@@ -27,7 +28,7 @@
     touch-action:none; user-select:none; }
   .tabscroll:hover:not(:disabled) { background:#f1f3f6; color:var(--ink); }
   .tabscroll:disabled { opacity:.25; cursor:default; }
-  #search { flex:0 0 150px; font:12px system-ui; padding:5px 8px; border:1px solid var(--bd); border-radius:6px; }
+  #search { flex:0 1 150px; min-width:90px; font:12px system-ui; padding:5px 8px; border:1px solid var(--bd); border-radius:6px; }
   #dashfit { flex:0 0 auto; font:12px system-ui; padding:5px 7px; border:1px solid var(--bd); border-radius:6px; background:#fff; color:var(--ink); }
   .tools { display:flex; gap:4px; flex:0 0 auto; }
   .tools button { border:1px solid var(--bd); background:#fff; border-radius:6px; padding:5px 9px; font:12px system-ui; cursor:pointer; color:var(--ink); }
@@ -1351,27 +1352,16 @@ function renderSheet(s, el, onClick, opts) {
     const c = document.createElement('div');
     c.className = 'chart';
     const inDash = !!el.closest('.dash');
-    const nat = chartNaturalSize(s.spec);
-    const fit = opts.fit || (inDash ? 'standard' : 'entire-view');
     if (inDash) {
-      const zoneW = Math.max(120, el.clientWidth);
-      const zoneH = Math.max(120, el.clientHeight);
-      if (fit === 'standard') {
-        if (nat.width > zoneW) c.style.width = nat.width + 'px';
-        if (nat.height > zoneH) c.style.height = nat.height + 'px';
-      } else if (fit === 'fit-width') {
-        c.style.width = '100%';
-        if (nat.height > zoneH) c.style.height = nat.height + 'px';
-      } else if (fit === 'fit-height') {
-        if (nat.width > zoneW) c.style.width = nat.width + 'px';
-      }
+      // un graphique de dashboard occupe sa zone, comme en mode « vue entière »
+      c.style.width = '100%';
+      c.style.flex = '1';
+      c.style.minHeight = '0';
+      c.style.height = 'auto';
     } else {
+      const nat = chartNaturalSize(s.spec);
       c.style.height = (nat.height > 460 ? nat.height : 460) + 'px';
       if (nat.width > 0 && nat.width > el.clientWidth) c.style.width = nat.width + 'px';
-    }
-    if (inDash) {
-      if (c.style.height) c.style.flex = '0 0 auto';
-      else { c.style.flex = '1'; c.style.minHeight = '0'; c.style.height = 'auto'; }
     }
     el.appendChild(c);
     chart(s.spec, c, s, onClick);
@@ -1751,6 +1741,44 @@ async function apiSheet(name, extra) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+async function fetchSheetData(name) {
+  const data = await apiSheet(name);
+  let idx = WB.sheets.findIndex(x => x.name === name);
+  if (idx < 0) { WB.sheets.push(data); idx = WB.sheets.length - 1; }
+  else WB.sheets[idx] = data;
+  const vi = views.findIndex(v => v.kind === 'sheet' && v.data.name === name);
+  if (vi >= 0) views[vi].data = data;
+  return data;
+}
+async function preloadDash(d) {
+  const dev = currentDevice(d);
+  const zones = dev ? dev.zones : d.zones;
+  const names = [...new Set((zones || []).map(z => z.sheet).filter(Boolean))];
+  await Promise.all(names.map(async name => {
+    const i = WB.sheets.findIndex(s => s.name === name);
+    if (i >= 0 && WB.sheets[i].kind === 'pending') {
+      try { await fetchSheetData(name); } catch (e) {}
+    }
+  }));
+}
+async function showLazySheet(name, panel) {
+  panel.innerHTML = '<div class="loading">Chargement de la feuille…</div>';
+  try {
+    const s = await fetchSheetData(name);
+    if (!panel.isConnected) return;
+    panel.innerHTML = '';
+    actionBanner(panel);
+    buildControls(s, panel);
+    const clickable = hasAction(s);
+    renderSheet(s, panel, clickable ? (fields => {
+      const act = actionFor(s, 'on-select');
+      if (act) dispatch(act, fields, s);
+    }) : null);
+  } catch (e) {
+    if (panel.isConnected)
+      panel.innerHTML = '<div class="empty">Feuille indisponible</div>';
+  }
+}
 async function refreshSheet(name, filterPatch) {
   const idx = WB.sheets.findIndex(x => x.name === name);
   if (idx < 0) return;
@@ -1903,6 +1931,24 @@ function renderLegendZone(z, zone) {
 }
 function renderDash(d, el) {
   state.dash = d.name;
+  if (WB.lazy && !d.__loaded) {
+    if (!d.__loading) {
+      d.__loading = true;
+      preloadDash(d).then(() => {
+        d.__loaded = true;
+        d.__loading = false;
+        if (el.isConnected) { el.innerHTML = ''; renderDash(d, el); }
+        else if (state.dash === d.name) show(state.view);
+      }).catch(() => {
+        d.__loading = false;
+        if (el.isConnected)
+          el.innerHTML = '<div class="empty">Tableau de bord indisponible</div>';
+        else if (state.dash === d.name) show(state.view);
+      });
+    }
+    el.innerHTML = '<div class="loading">Chargement du tableau de bord…</div>';
+    return;
+  }
   actionBanner(el);
   if (d.title) {
     const h = document.createElement('div');
@@ -2045,7 +2091,8 @@ function renderDash(d, el) {
     const filtered = state.filter && state.filter.source !== s.name;
     const storyF = state.storyFilters && state.storyFilters[s.name];
     const opts = { noTitle: z.show_title === false, fit: z.fit };
-    if (paramsDirty || filtered || Object.keys(state.dashFilters).length || storyF) {
+    const needLoad = WB.lazy && s.kind === 'pending';
+    if (needLoad || paramsDirty || filtered || Object.keys(state.dashFilters).length || storyF) {
       loadSheet(s.name, inner, clickable ? (fields => {
         const act = actionFor(s, 'on-select');
         if (act) dispatch(act, fields, s);
@@ -2149,6 +2196,10 @@ function show(i) {
   } else {
     state.dash = null;
     actionBanner(panel);
+    if (WB.lazy && v.data.kind === 'pending') {
+      showLazySheet(v.data.name, panel);
+      return;
+    }
     buildControls(v.data, panel);
     const clickable = hasAction(v.data);
     renderSheet(v.data, panel, clickable ? (fields => {

@@ -17,6 +17,8 @@ services:
       PUBLIC_MAX_FILES: ${PUBLIC_MAX_FILES:-20}
       MAX_FILES: ${MAX_FILES:-200}
       MAX_CACHE: ${MAX_CACHE:-64}
+      # Rendu feuille par feuille au-delà de cette taille (octets).
+      LAZY_BYTES: ${LAZY_BYTES:-524288000}
       # Quota par compte (octets). 2147483648 = 2 Go.
       DEFAULT_QUOTA_BYTES: ${DEFAULT_QUOTA_BYTES:-2147483648}
       # URL absolue derrière un proxy (liens de partage, iframe, API).

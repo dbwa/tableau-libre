@@ -41,6 +41,7 @@ MAX_DATA_BYTES = 20 * 1024 ** 3
 MAX_PUBLIC_BYTES = int(os.environ.get("MAX_PUBLIC_BYTES", str(5 * 1024 ** 3)))
 PUBLIC_MAX_FILES = int(os.environ.get("PUBLIC_MAX_FILES", "20"))
 DEFAULT_QUOTA = int(os.environ.get("DEFAULT_QUOTA_BYTES", str(2 * 1024 ** 3)))
+LAZY_BYTES = int(os.environ.get("LAZY_BYTES", str(500 * 1024 ** 2)))
 MAP_STYLE = os.environ.get("MAP_STYLE_URL", "https://tiles.openfreemap.org/styles/liberty")
 ACCESS_PASSWORD = os.environ.get("ACCESS_PASSWORD", "")
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
@@ -85,6 +86,11 @@ FINALIZE_LOCK = threading.Lock()
 
 def dir_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def render_payload(wb, dir_path: Path) -> dict:
+    """Rendu complet, ou feuille par feuille au-delà du seuil de taille."""
+    return wb.render(lazy=dir_size(Path(dir_path)) > LAZY_BYTES)
 
 
 def public_session_hash(token: str) -> str:
@@ -152,7 +158,7 @@ def read_payload(dir_path: Path, key: str | None = None) -> dict:
         data = {}
     if not data or data.get("version") != CODE_VERSION:
         try:
-            fresh = workbook(dir_path, key).render()
+            fresh = render_payload(workbook(dir_path, key), dir_path)
             fresh["title"] = data.get("title")
             fresh["files"] = data.get("files", [])
             fresh["version"] = CODE_VERSION
@@ -221,7 +227,7 @@ def finalize(src_dir: Path, dst_dir: Path, name: str,
 
     target = dst_dir / name
     wb = open_workbook(str(target), str(dst_dir))
-    payload = wb.render()
+    payload = render_payload(wb, dst_dir)
     payload["title"] = os.path.splitext(name)[0]
     payload["files"] = sorted(p.name for p in dst_dir.iterdir() if p.is_file())
     payload["version"] = CODE_VERSION

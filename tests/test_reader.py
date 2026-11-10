@@ -311,6 +311,13 @@ class ExemplesImportes(unittest.TestCase):
         sheet = next(s for s in rendered["sheets"] if s["name"] == "DJU")
         self.assertEqual(sheet["tab_color"], "#17927d")
 
+    def test_rendu_differe(self):
+        wb = self.wbs["conso"][0]
+        light = wb.render(lazy=True)
+        self.assertTrue(light["lazy"])
+        self.assertTrue(all(s["kind"] == "pending" for s in light["sheets"]))
+        self.assertTrue(any(s["tab_color"] for s in light["sheets"]))
+
 
 if __name__ == "__main__":
     unittest.main()

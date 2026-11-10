@@ -796,7 +796,7 @@ def _replace_data_locked(user: dict, wb: dict, tmp: Path) -> dict:
             os.replace(p, directory / p.name)
         core.drop_cache(wb["id"])
         engine = core.workbook(directory, wb["id"])
-        payload = engine.render()
+        payload = core.render_payload(engine, directory)
         payload["title"] = wb["name"]
         payload["files"] = sorted(x.name for x in directory.iterdir()
                                   if x.is_file() and x.name not in ("render.json", "meta.json")
@@ -1016,7 +1016,7 @@ def _mutate_files(user: dict, wb: dict, *, changes=(), deletes=(), do_render: bo
                     render_backup = render_path.with_name("render.json.bak." + token)
                     shutil.copy2(render_path, render_backup)
                 engine = core.workbook(directory, wb["id"])
-                payload = engine.render()
+                payload = core.render_payload(engine, directory)
                 payload["title"] = wb["name"]
                 payload["files"] = _workbook_files(directory)
                 payload["version"] = core.CODE_VERSION
