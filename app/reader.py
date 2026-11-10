@@ -286,6 +286,7 @@ class Sheet:
     datasource: str | None = None
     title: str | None = None
     title_template: str | None = None
+    tab_color: str | None = None
     tooltip: str | None = None
     totals: dict = field(default_factory=dict)
     manual: dict = field(default_factory=dict)
@@ -311,6 +312,7 @@ class Dashboard:
     device_layouts: dict = field(default_factory=dict)
     viewpoints: dict = field(default_factory=dict)
     sizing: str = "automatic"
+    tab_color: str | None = None
 
 
 @dataclass
@@ -335,6 +337,13 @@ class Workbook:
     def _parse(self) -> None:
         parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False, remove_comments=True)
         root = etree.parse(self.twb_path, parser).getroot()
+
+        tab_colors: dict[str, str] = {}
+        for win in root.findall("windows/window"):
+            name = win.get("name")
+            color = win.get("tab-color")
+            if name and color:
+                tab_colors[name] = color
 
         hypers = {os.path.basename(p).lower(): p
                   for p in (os.path.join(dp, f) for dp, _, fs in os.walk(self.workdir) for f in fs)
@@ -426,12 +435,14 @@ class Workbook:
             sheet = self._parse_sheet(ws)
             if sheet is None:
                 continue
+            sheet.tab_color = tab_colors.get(sheet.name)
             sheet_names.add(sheet.name)
             self.sheets.append(sheet)
 
         for db in root.findall("dashboards/dashboard"):
             dash = self._parse_dashboard(db, sheet_names)
             if dash.zones or dash.story:
+                dash.tab_color = tab_colors.get(dash.name)
                 self.dashboards.append(dash)
 
         for act in root.findall("actions/action"):
@@ -1556,7 +1567,8 @@ class Workbook:
                             "width": d.width, "height": d.height,
                             "background": d.background, "story": d.story,
                             "devices": d.devices, "device_layouts": d.device_layouts,
-                            "viewpoints": d.viewpoints, "sizing": d.sizing}
+                            "viewpoints": d.viewpoints, "sizing": d.sizing,
+                            "tab_color": d.tab_color}
                            for d in self.dashboards],
             "parameters": self.param_meta,
             "actions": self.actions,
@@ -1679,6 +1691,7 @@ class Workbook:
                     row[name] = f.aliases[str(v)]
 
         base = {"name": s.name, "title": self._title_for(s), "mark": s.mark,
+                "tab_color": s.tab_color,
                 "columns": names, "total": len(data),
                 "formats": formats, "labels": labels,
                 "aliasReverse": alias_reverse,

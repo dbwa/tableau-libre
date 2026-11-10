@@ -303,6 +303,14 @@ class ExemplesImportes(unittest.TestCase):
                     if z.get("field", "").startswith("Ratio conso_new"))
         self.assertEqual(zone["label"], "Ratio conso_new_VS_old_entier")
 
+    def test_couleurs_onglets(self):
+        _, rendered = self.wbs["conso"]
+        dash = next(d for d in rendered["dashboards"]
+                    if d["name"] == "comparaison inv précédent (ratios)")
+        self.assertEqual(dash["tab_color"], "#dec77b")
+        sheet = next(s for s in rendered["sheets"] if s["name"] == "DJU")
+        self.assertEqual(sheet["tab_color"], "#17927d")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,11 @@
   nav button { flex:0 0 auto; border:0; background:transparent; padding:6px 11px; border-radius:7px; cursor:pointer; font:inherit; color:var(--muted); }
   nav button:hover { background:#f1f3f6; }
   nav button.on { background:#e8f0fe; color:var(--accent); font-weight:600; }
+  .tabscroll { flex:0 0 auto; border:0; background:transparent; color:var(--muted);
+    font:20px/1 system-ui; padding:2px 5px; border-radius:6px; cursor:pointer;
+    touch-action:none; user-select:none; }
+  .tabscroll:hover:not(:disabled) { background:#f1f3f6; color:var(--ink); }
+  .tabscroll:disabled { opacity:.25; cursor:default; }
   #search { flex:0 0 150px; font:12px system-ui; padding:5px 8px; border:1px solid var(--bd); border-radius:6px; }
   #dashfit { flex:0 0 auto; font:12px system-ui; padding:5px 7px; border:1px solid var(--bd); border-radius:6px; background:#fff; color:var(--ink); }
   .tools { display:flex; gap:4px; flex:0 0 auto; }
@@ -154,7 +159,9 @@
   <span id="expiry" class="pill" style="display:none"></span>
   <button id="endsession" style="display:none" title="Supprimer les fichiers de cette session">Terminer</button>
   <input id="search" placeholder="Filtrer les onglets…">
+  <button id="tabprev" class="tabscroll" title="Onglets précédents" aria-label="Onglets précédents" hidden>‹</button>
   <nav id="tabs"></nav>
+  <button id="tabnext" class="tabscroll" title="Onglets suivants" aria-label="Onglets suivants" hidden>›</button>
   <select id="dashfit" title="Taille du tableau de bord">
     <option value="window">Fenêtre</option>
     <option value="width">Largeur</option>
@@ -176,6 +183,8 @@ if (window.vega && vega.formatLocale) {
 }
 const main = document.getElementById('main');
 const tabs = document.getElementById('tabs');
+const tabPrev = document.getElementById('tabprev');
+const tabNext = document.getElementById('tabnext');
 function withKey(url){
   if(!WB.shareKey) return url;
   return url + (url.indexOf('?')>=0?'&':'?') + 'key=' + encodeURIComponent(WB.shareKey);
@@ -2118,6 +2127,13 @@ function showMenu(x, y, action, fields, sheet) {
 function show(i) {
   state.view = i;
   [...tabs.children].forEach((b, j) => b.classList.toggle('on', j === i));
+  const active = tabs.children[i];
+  if (active) {
+    const left = active.offsetLeft, right = left + active.offsetWidth;
+    if (left < tabs.scrollLeft) tabs.scrollLeft = left - 8;
+    else if (right > tabs.scrollLeft + tabs.clientWidth)
+      tabs.scrollLeft = right - tabs.clientWidth + 8;
+  }
   CLEANUPS.splice(0).forEach(fn => { try { fn(); } catch (e) {} });
   main.innerHTML = '';
   const v = views[i];
@@ -2160,14 +2176,42 @@ views.forEach((v, i) => {
   const b = document.createElement('button');
   b.textContent = v.label;
   b.dataset.label = v.label.toLowerCase();
+  if (v.data && v.data.tab_color)
+    b.style.boxShadow = 'inset 0 2px 0 ' + v.data.tab_color;
   b.onclick = () => show(i);
   tabs.appendChild(b);
 });
+function updateTabScroll() {
+  const overflow = tabs.scrollWidth > tabs.clientWidth + 1;
+  tabPrev.hidden = !overflow;
+  tabNext.hidden = !overflow;
+  tabPrev.disabled = tabs.scrollLeft <= 0;
+  tabNext.disabled = tabs.scrollLeft + tabs.clientWidth >= tabs.scrollWidth - 1;
+}
+function holdTabScroll(btn, dir) {
+  let timer = null;
+  const step = () => { tabs.scrollLeft += dir * 18; updateTabScroll(); };
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    step();
+    if (timer) clearInterval(timer);
+    timer = setInterval(step, 30);
+  });
+  const stop = () => { if (timer) clearInterval(timer); timer = null; };
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+    btn.addEventListener(ev, stop));
+}
+holdTabScroll(tabPrev, -1);
+holdTabScroll(tabNext, 1);
+tabs.addEventListener('scroll', updateTabScroll);
+window.addEventListener('resize', debounce(updateTabScroll, 100));
+requestAnimationFrame(updateTabScroll);
 document.getElementById('search').addEventListener('input', e => {
   const q = e.target.value.toLowerCase();
   [...tabs.children].forEach(b => {
     b.style.display = !q || b.dataset.label.includes(q) ? '' : 'none';
   });
+  updateTabScroll();
 });
 
 document.getElementById('btn-csv').onclick = () => {
