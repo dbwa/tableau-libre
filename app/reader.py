@@ -231,6 +231,43 @@ class Source:
     sets: dict[str, dict] = field(default_factory=dict)
     drill_paths: list[list[str]] = field(default_factory=list)
     hierarchy_names: list[str] = field(default_factory=list)
+    # nom logique Tableau -> nom physique dans l'extrait Hyper
+    remotes: dict[str, str] = field(default_factory=dict)
+
+
+_SUFFIX = re.compile(r"\s*\([^()]*\)$")
+
+
+def _remote_name(src: Source, name: str) -> str:
+    """Nom physique de l'extrait pour un nom logique du .twb."""
+    hit = src.remotes.get(name)
+    if hit:
+        return hit
+    key = _SUFFIX.sub("", name)
+    hit = src.remotes.get(key)
+    if hit:
+        return hit
+    # champs copiés d'une source « resume_activites » vers un extrait qui
+    # expose les mêmes colonnes sous leur nom court (intitule/valeur/unite)
+    if key.endswith("_indicateur"):
+        hit = src.remotes.get(key[:-len("_indicateur")])
+        if hit:
+            return hit
+    return name
+
+
+def _field_label(src: Source | None, name: str) -> str:
+    """Libellé lisible : caption Tableau, sinon nom sans suffixe d'extrait."""
+    f = src.fields.get(name) if src else None
+    if f and f.caption and f.caption != f.name:
+        return f.caption
+    base = _SUFFIX.sub("", name)
+    if base != name:
+        bf = src.fields.get(base) if src else None
+        if bf and bf.caption and bf.caption != bf.name:
+            return bf.caption
+        name = base
+    return name.replace("_", " ").strip()
 
 
 @dataclass
@@ -248,6 +285,7 @@ class Sheet:
     labels: bool = False
     datasource: str | None = None
     title: str | None = None
+    title_template: str | None = None
     tooltip: str | None = None
     totals: dict = field(default_factory=dict)
     manual: dict = field(default_factory=dict)
@@ -330,6 +368,14 @@ class Workbook:
                 f = _make_field(col)
                 if f:
                     src.fields[f.name] = f
+
+            for rec in ds.findall(".//metadata-record"):
+                if rec.get("class") != "column":
+                    continue
+                local = (rec.findtext("local-name") or "").strip().strip("[]")
+                remote = (rec.findtext("remote-name") or "").strip().strip("[]")
+                if local and remote:
+                    src.remotes[local] = remote
 
             for g in ds.findall("group"):
                 gname = (g.get("name") or "").strip("[]")
@@ -425,6 +471,69 @@ class Workbook:
                 zoom = vp.find("zoom")
                 dash.viewpoints[name] = zoom.get("type") if zoom is not None else "standard"
 
+    def _text_ref(self, ds: str, inner: str) -> str:
+        """Remplace une référence `[source].[champ]` par son libellé affiché."""
+        if ds in ("Parameters", "Paramètres"):
+            name = _zone_param(inner) or inner.strip("[]")
+            meta = next((p for p in self.param_meta if p["name"] == name), None)
+            value = self.params.get(name, meta["caption"] if meta else name)
+            return _unquote(str(value))
+        parsed = instance_parts(inner)
+        field = parsed[1] if parsed else inner.strip("[]")
+        src = self.sources.get(ds)
+        f = src.fields.get(field) if src else None
+        if f is None:
+            for other in self.sources.values():
+                f = other.fields.get(field)
+                if f:
+                    src = other
+                    break
+        return _field_label(src, field)
+
+    def _title_for(self, s: Sheet) -> str | None:
+        """Titre dynamique : valeurs de paramètres et membres de filtres sélectionnés."""
+        text = s.title_template or s.title
+        if not text:
+            return text
+        selected: dict[str, str] = {}
+        for f in s.filters:
+            field = f.get("field")
+            if not field:
+                continue
+            base = _base_field(field).lower()
+            members = f.get("members") or []
+            if f.get("none"):
+                selected[base] = "Aucun"
+            elif len(members) == 1 and not f.get("exclude"):
+                selected[base] = str(members[0])
+            elif len(members) > 1 and not f.get("exclude"):
+                more = "…" if len(members) > 3 else ""
+                selected[base] = ", ".join(str(m) for m in members[:3]) + more
+            rng = f.get("range") or {}
+            if rng.get("min") is not None and rng.get("min") == rng.get("max"):
+                selected[base] = str(rng["min"])
+        own = self.sources.get(s.datasource or "")
+
+        def repl(ds: str, inner: str) -> str:
+            if ds in ("Parameters", "Paramètres"):
+                name = _zone_param(inner) or inner.strip("[]")
+                meta = next((p for p in self.param_meta if p["name"] == name), None)
+                value = self.params.get(name, meta["caption"] if meta else name)
+                return _unquote(str(value))
+            parsed = instance_parts(inner)
+            field = parsed[1] if parsed else inner.strip("[]")
+            keys = (field.lower(), _base_field(field).lower())
+            value = next((selected[k] for k in keys if k in selected), "Tous")
+            src = self.sources.get(ds) or own
+            f = src.fields.get(field) if src else None
+            if f and f.aliases and value in f.aliases:
+                value = f.aliases[value]
+            return _unquote(value)
+
+        text = _REF.sub(lambda m: repl(m.group(1), m.group(2)),
+                        _TITLE_REF.sub(lambda m: repl(m.group(1), m.group(2)), text))
+        return re.sub(r"<\s*Sheet Name\s*>", s.name, text, flags=re.I)
+
     def _parse_sheet(self, ws) -> Sheet | None:
         sheet = Sheet(name=ws.get("name") or "Feuille")
         table = ws.find("table")
@@ -433,7 +542,8 @@ class Workbook:
 
         title = ws.find("layout-options/title/formatted-text")
         if title is not None:
-            sheet.title = _runs_text(title)
+            sheet.title_template = _runs_text(title)
+            sheet.title = _runs_text(title, self._text_ref)
 
         sheet.rows = parse_shelf(table.findtext("rows"))
         sheet.cols = parse_shelf(table.findtext("cols"))
@@ -576,7 +686,8 @@ class Workbook:
 
         title = db.find("layout-options/title/formatted-text")
         if title is not None:
-            dash.title = _runs_text(title)
+            dash.title = re.sub(r"<\s*Sheet Name\s*>", dash.name,
+                                _runs_text(title, self._text_ref), flags=re.I)
 
         style = db.find("style")
         if style is not None:
@@ -594,12 +705,12 @@ class Workbook:
             zones_el = dl.find("zones")
             dash.device_layouts[name] = {
                 "width": dw, "height": dh,
-                "zones": _parse_zones(zones_el, sheet_names) if zones_el is not None else [],
+                "zones": _parse_zones(zones_el, sheet_names, self._text_ref) if zones_el is not None else [],
             }
 
         zones_el = db.find("zones")
         if zones_el is not None:
-            dash.zones = _parse_zones(zones_el, sheet_names)
+            dash.zones = _parse_zones(zones_el, sheet_names, self._text_ref)
 
         # story points (dans la zone flipboard) : filtres capturés par étape
         for sp in db.findall(".//story-point"):
@@ -752,6 +863,8 @@ class Workbook:
         return None
 
     def _plan(self, src: Source, wanted: set[str]) -> tuple[str, list[str]]:
+        # les champs du .twb portent un nom logique ; l'extrait utilise remote-name
+        wanted = {_remote_name(src, w).lower() for w in wanted}
         catalog = self._catalog(src.extract)
         if not catalog:
             raise TWBXError("extrait vide")
@@ -816,16 +929,20 @@ class Workbook:
 
     def _join_expr(self, src: Source, expr: str, table: str) -> tuple[str | None, str]:
         expr = (expr or "").strip()
+
+        def qual(name: str) -> str:
+            f = src.fields.get(name)
+            name = f.name if f else name
+            return f"{table}.{quote(_remote_name(src, name))}"
+
         m = re.fullmatch(r"\[([^\]]+)\]", expr)
         try:
             if m:
                 f = src.fields.get(m.group(1))
-                name = f.name if f else m.group(1)
-                return f"{table}.{quote(name)}", _field_type(f)
+                return qual(m.group(1)), _field_type(f)
             sql = translate(
                 expr,
-                lambda n: (f"{table}.{quote(src.fields[n].name if n in src.fields else n)}",
-                           _field_type(src.fields.get(n))),
+                lambda n: (qual(n), _field_type(src.fields.get(n))),
                 self.params)
             return sql, "str"
         except CalcError:
@@ -849,7 +966,12 @@ class Workbook:
                 return f'{quote(lod_alias)}.{quote(name)}' if lod_alias else None
             if name.startswith("__tc_"):
                 return f'{quote(tc_alias)}.{quote(name)}' if tc_alias else None
-            return lower.get(name.lower())
+            c = lower.get(name.lower())
+            if c is None:
+                remote = _remote_name(src, name)
+                if remote != name:
+                    c = lower.get(remote.lower())
+            return c
 
         def sql_for(name: str, stack: tuple = ()) -> tuple[str, str]:
             if name in stack:
@@ -1211,12 +1333,37 @@ class Workbook:
         tc_labels = set()
         for m in measures:
             label = f"{m.agg}:{m.field}"
+            if label in base_names:
+                continue
             if m.field == "__records":
                 base_select.append(f"COUNT(*) AS {quote(label)}")
                 base_names.append(label)
                 continue
             if self._has_table_calc(src, m.field):
                 tc_labels.add(label)
+                # les agrégats cités par le calcul de table doivent être
+                # calculés dans le sous-requête, même s'ils ne sont pas sur l'étagère
+                for rlabel in _agg_refs(src.fields[m.field].formula or ""):
+                    if rlabel in base_names:
+                        continue
+                    ragg, rfield = rlabel.split(":", 1)
+                    try:
+                        rexpr = base_for(rfield)[0]
+                    except CalcError:
+                        continue
+                    rfn = AGGS.get(ragg)
+                    if ragg in ("quart1", "quart3"):
+                        q = 0.25 if ragg == "quart1" else 0.75
+                        rexpr = f"PERCENTILE_CONT({q}) WITHIN GROUP (ORDER BY {rexpr})"
+                    elif rfn == "ASIS":
+                        rexpr = (f"MAX({rexpr})" if is_agg(rfield) else f"SUM({rexpr})")
+                    elif not is_agg(rfield):
+                        rexpr = (f"COUNT(DISTINCT {rexpr})" if rfn == "COUNT_DISTINCT"
+                                 else f"{rfn}({rexpr})")
+                    elif src.fields.get(rfield) and "{" in (src.fields[rfield].formula or ""):
+                        rexpr = f"MAX({rexpr})"
+                    base_select.append(f"{rexpr} AS {quote(rlabel)}")
+                    base_names.append(rlabel)
                 continue
             try:
                 expr = base_for(m.field)[0]
@@ -1311,6 +1458,20 @@ class Workbook:
                 except CalcError as exc:
                     self.warnings.append(f"{m.field} : {exc}")
                     continue
+                # dans un calcul de table, `SUM([x])` désigne déjà la mesure
+                # agrégée par groupe : on lit la colonne du sous-requête.
+                for bname in base_names:
+                    if ":" not in bname or bname in tc_labels:
+                        continue
+                    bagg, bfield = bname.split(":", 1)
+                    fn = AGGS.get(bagg)
+                    if not fn or fn in ("COUNT_DISTINCT", "PERCENTILE", "ASIS"):
+                        continue
+                    try:
+                        raw = tc_for(bfield)[0]
+                    except CalcError:
+                        continue
+                    expr = expr.replace(f"{fn}({raw})", f'"_tc2".{quote(bname)}')
                 cols.append(f"{expr} AS {quote(label)}")
                 names.append(label)
             outer_sql = (f"SELECT {', '.join(cols)} FROM ({win}) AS {quote('_tc2')} "
@@ -1399,13 +1560,16 @@ class Workbook:
                            for d in self.dashboards],
             "parameters": self.param_meta,
             "actions": self.actions,
-            "warnings": self.warnings,
+            "warnings": list(dict.fromkeys(self.warnings)),
         }
 
     def _render_sheet(self, s: Sheet) -> dict:
         src = self._source_for(s)
         enc_items = [i for lst in s.encodings.values() for i in lst]
         items = _dedupe(s.rows + s.cols + enc_items)
+        if s.encodings.get("geometry"):
+            # champs d'infobulle : sans eux, les lignes de la carte sont vides
+            items = _dedupe(items + _tooltip_items(s.tooltip))
         # feuille multi-sources (cartes superposées) : on rend la couche principale
         items = [i for i in items if not i.ds or i.ds == src.name]
 
@@ -1479,9 +1643,8 @@ class Workbook:
         formats, labels = {}, {}
         for name in names:
             base = name.split(":", 1)[1] if ":" in name else name
+            labels[name] = _field_label(src, base)
             f = src.fields.get(base)
-            if f and f.caption:
-                labels[name] = f.caption
             fmt = _parse_format(f.number_format if f else None)
             if fmt:
                 formats[name] = fmt
@@ -1491,9 +1654,7 @@ class Workbook:
             base = flt.get("field")
             if not base:
                 continue
-            f = src.fields.get(_base_field(base))
-            if f and f.caption:
-                labels.setdefault(base, f.caption)
+            labels.setdefault(base, _field_label(src, _base_field(base)))
         mn = src.fields.get(":Measure Names")
         if mn and mn.aliases:
             for key, val in mn.aliases.items():
@@ -1517,7 +1678,7 @@ class Workbook:
                 if v is not None and str(v) in f.aliases:
                     row[name] = f.aliases[str(v)]
 
-        base = {"name": s.name, "title": s.title, "mark": s.mark,
+        base = {"name": s.name, "title": self._title_for(s), "mark": s.mark,
                 "columns": names, "total": len(data),
                 "formats": formats, "labels": labels,
                 "aliasReverse": alias_reverse,
@@ -1806,21 +1967,33 @@ def _unquote(v: str | None) -> str:
     return v
 
 
-def _runs_text(el) -> str:
-    return " ".join("".join(el.itertext()).split())
+def _tableau_text(text: str, resolve=None) -> str:
+    """Texte Tableau : références de champs et sauts de ligne (Æ)."""
+    if resolve is not None:
+        text = _REF.sub(lambda m: resolve(m.group(1), m.group(2)), text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text.replace("Æ\n", "\n").replace("Æ", "\n")
 
 
-def _tooltip_text(el) -> str:
+def _runs_text(el, resolve=None) -> str:
+    text = "".join(r.text or "" for r in el.findall("run"))
+    if not text:
+        text = "".join(el.itertext())
+    text = _tableau_text(text, resolve)
+    return "\n".join(" ".join(line.split()) for line in text.split("\n")).strip()
+
+
+def _tooltip_text(el, resolve=None) -> str:
     parts = []
     for r in el.findall("run"):
-        parts.append((r.text or "").replace("Æ", ""))
+        parts.append(_tableau_text(r.text or "", resolve))
     return "".join(parts).strip()
 
 
-def _parse_runs(el) -> list[dict]:
+def _parse_runs(el, resolve=None) -> list[dict]:
     runs = []
     for r in el.findall("run"):
-        text = r.text or ""
+        text = _tableau_text(r.text or "", resolve)
         if not text:
             continue
         runs.append({"text": text, "bold": r.get("bold") == "true",
@@ -1829,7 +2002,7 @@ def _parse_runs(el) -> list[dict]:
                      "size": r.get("fontsize"), "color": r.get("fontcolor"),
                      "font": r.get("fontname"), "align": r.get("fontalignment")})
     if not runs:
-        text = _runs_text(el)
+        text = _runs_text(el, resolve)
         if text:
             runs.append({"text": text})
     return runs
@@ -1867,13 +2040,13 @@ def _zone_field(param: str | None) -> str | None:
     m = re.search(r"\[([^\]]+)\]$", param)
     if not m:
         return None
-    parts = m.group(1).split(":")
-    if len(parts) >= 3:
-        agg, base, kind = parts[0], ":".join(parts[1:-1]), parts[-1]
+    parsed = instance_parts(m.group(1))
+    if parsed:
+        agg, base, kind = parsed
         if agg in PART_LABEL or agg in TRUNC_LABEL:
             return dim_name(ShelfItem(ds="", agg=agg, field=base, kind=kind))
         return base
-    return parts[0]
+    return m.group(1).split(":")[0]
 
 
 def _zone_param(param: str | None) -> str | None:
@@ -1896,7 +2069,7 @@ def _zone_style(z) -> dict:
     return st
 
 
-def _parse_zones(container, sheet_names: set[str]) -> list[dict]:
+def _parse_zones(container, sheet_names: set[str], resolve=None) -> list[dict]:
     zones: list[dict] = []
     seen = set()
     for z in container.iter("zone"):
@@ -1923,8 +2096,13 @@ def _parse_zones(container, sheet_names: set[str]) -> list[dict]:
                 key = ("filter", nm, field, x, y, w, h)
                 if key not in seen:
                     seen.add(key)
+                    label = None
+                    m = _REF.search(z.get("param") or "")
+                    if m and resolve is not None:
+                        label = resolve(m.group(1), m.group(2))
                     zones.append({"kind": "filter", "sheet": nm, "field": field,
-                                  "mode": z.get("mode"), "values": z.get("values"),
+                                  "label": label, "mode": z.get("mode"),
+                                  "values": z.get("values"),
                                   "x": x, "y": y, "w": w, "h": h, "style": style})
             continue
         if kind == "paramctrl":
@@ -1976,7 +2154,7 @@ def _parse_zones(container, sheet_names: set[str]) -> list[dict]:
                               "x": x, "y": y, "w": w, "h": h, "style": style})
             continue
         if kind == "button":
-            text = _runs_text(z.find("formatted-text")) if z.find("formatted-text") is not None else ""
+            text = _runs_text(z.find("formatted-text"), resolve) if z.find("formatted-text") is not None else ""
             target = z.get("param") or z.get("target")
             zones.append({"kind": "button", "text": text or "Ouvrir",
                           "target": _zone_param(target) or target,
@@ -1987,8 +2165,8 @@ def _parse_zones(container, sheet_names: set[str]) -> list[dict]:
             continue
         ft = z.find("formatted-text")
         if ft is not None:
-            runs = _parse_runs(ft)
-            text = _runs_text(ft)
+            runs = _parse_runs(ft, resolve)
+            text = _runs_text(ft, resolve)
             if text:
                 key = ("text", text, x, y, w, h)
                 if key not in seen:
@@ -2132,15 +2310,57 @@ def _base_field(name: str) -> str:
 
 
 _REF = re.compile(r"\[([^\]]+)\]\.\[([^\]]+)\]")
+_TITLE_REF = re.compile(r"<\[([^\]]+)\]\.\[([^\]]+)\]>")
+_AGG_CALL = re.compile(
+    r"\b(SUM|AVG|MIN|MAX|COUNTD|COUNT|MEDIAN|ATTR|STDEVP|STDEV|VARP|VAR)"
+    r"\s*\(\s*\[([^\]]+)\]\s*\)", re.I)
+_AGG_KEY = {"SUM": "sum", "AVG": "avg", "MIN": "min", "MAX": "max",
+            "COUNT": "cnt", "COUNTD": "ctd", "MEDIAN": "med", "ATTR": "attr",
+            "STDEV": "stdev", "STDEVP": "stdevp", "VAR": "var", "VARP": "varp"}
+
+
+def _agg_refs(formula: str) -> list[str]:
+    """Mesures agrégées citées par une formule de calcul de table."""
+    out = []
+    for fn, field in _AGG_CALL.findall(formula or ""):
+        label = f"{_AGG_KEY[fn.upper()]}:{field}"
+        if label not in out:
+            out.append(label)
+    return out
+
+
+def instance_parts(inner: str) -> tuple[str, str, str] | None:
+    """Décompose `sum:champ:qk` ou `pcto:sum:champ:qk:2` en (agrégat, champ, type)."""
+    parts = inner.split(":")
+    while len(parts) > 1 and parts[-1].isdigit():
+        parts.pop()
+    if len(parts) < 3:
+        return None
+    if len(parts) >= 4:
+        return parts[-3], parts[-2], parts[-1]
+    return parts[0], ":".join(parts[1:-1]), parts[-1]
+
+
+def _tooltip_items(text: str | None) -> list[ShelfItem]:
+    """Champs cités dans une infobulle personnalisée, pour les rendre disponibles."""
+    out = []
+    for ds, inner in _REF.findall(text or ""):
+        if ds in ("Parameters", "Paramètres"):
+            continue
+        parsed = instance_parts(inner)
+        if parsed:
+            agg, field, kind = parsed
+            out.append(ShelfItem(ds=ds, agg=agg, field=field, kind=kind))
+    return out
 
 
 def parse_shelf(text: str | None) -> list[ShelfItem]:
     out = []
     for ds, inner in _REF.findall(text or ""):
-        parts = inner.split(":")
-        if len(parts) < 3:
-            continue
-        out.append(ShelfItem(ds=ds, agg=parts[0], field=":".join(parts[1:-1]), kind=parts[-1]))
+        parsed = instance_parts(inner)
+        if parsed:
+            agg, field, kind = parsed
+            out.append(ShelfItem(ds=ds, agg=agg, field=field, kind=kind))
     return out
 
 
@@ -2176,15 +2396,15 @@ def parse_filter(el) -> dict:
     field = None
     measure_names: list[str] = []
     if m:
-        parts = m.group(2).split(":")
-        if len(parts) >= 3:
-            agg, base, kind = parts[0], ":".join(parts[1:-1]), parts[-1]
+        parsed = instance_parts(m.group(2))
+        if parsed:
+            agg, base, kind = parsed
             if agg in PART_LABEL or agg in TRUNC_LABEL:
                 field = dim_name(ShelfItem(ds=m.group(1), agg=agg, field=base, kind=kind))
             else:
                 field = base
-        elif len(parts) == 1:
-            field = parts[0]
+        elif len(m.group(2).split(":")) == 1:
+            field = m.group(2)
         elif m.group(2).startswith(":Measure Names"):
             measure_names = []
     if field and (field.startswith("Action (") or field == ":Measure Names"):
@@ -2617,7 +2837,7 @@ def map_payload(s: Sheet, data: list[dict], names: list[str], labels: dict,
         geom = _wkt_to_geojson(row.get(geo.field))
         if geom is None:
             continue
-        props = {d: row.get(d) for d in details}
+        props = {n: row.get(n) for n in names if n != geo.field}
         v = row.get(ckey) if ckey else None
         if ckey:
             props["__value"] = v
@@ -2762,6 +2982,9 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
     dnames = [dim_name(d) for d in dims if dim_name(d) in names]
     mnames = [f"{m.agg}:{m.field}" for m in measures if f"{m.agg}:{m.field}" in names]
 
+    def qformat(name: str) -> str | None:
+        return _value_format(name, formats, data)
+
     if not data or not names:
         return None
     mark = s.mark.lower()
@@ -2796,7 +3019,7 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
                 "encoding": {"theta": {"field": mnames[0], "type": "quantitative"},
                              "color": {"field": dnames[0], "type": "nominal",
                                        "scale": {"range": colors}},
-                             "tooltip": _tooltip_enc(dnames, mnames, labels)}}
+                             "tooltip": _tooltip_enc(dnames, mnames, labels, formats, data)}}
 
     # tableau croisé de chaleur
     if len(dnames) >= 2 and mark in ("square", "heatmap", "rect"):
@@ -2807,7 +3030,9 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
                      "title": _short_label(labels.get(dnames[1], dnames[1]), 40)},
                "color": {"field": mnames[0], "type": "quantitative",
                          "scale": {"range": SEQ}},
-               "tooltip": _tooltip_enc(dnames, mnames, labels)}
+               "tooltip": _tooltip_enc(dnames, mnames, labels, formats, data)}
+        if qformat(mnames[0]):
+            enc["color"]["legend"] = {"format": qformat(mnames[0])}
         if ex:
             enc["x"]["axis"] = {"labelExpr": ex}
         if ey:
@@ -2821,10 +3046,11 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
                      "title": _short_label(labels.get(dnames[0], dnames[0]), 40)},
                "xOffset": {"field": dnames[1], "type": "nominal"},
                "y": {"field": mnames[0], "type": "quantitative",
-                     "title": _short_label(labels.get(mnames[0], mnames[0]), 48)},
+                     "title": _short_label(labels.get(mnames[0], mnames[0]), 48),
+                     "axis": {"format": qformat(mnames[0])}},
                "color": {"field": dnames[1], "type": "nominal",
                          "scale": {"range": colors}},
-               "tooltip": _tooltip_enc(dnames, mnames, labels)}
+               "tooltip": _tooltip_enc(dnames, mnames, labels, formats, data)}
         ex = _part_axis_expr(dnames[0])
         if ex:
             enc["x"]["axis"] = {"labelExpr": ex}
@@ -2838,11 +3064,12 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
             enc0 = {"x": enc_dim,
                     "y": {"field": first, "type": "quantitative",
                           "title": _short_label(labels.get(first, first), 40),
-                          "axis": {"titleColor": colors[0]}},
-                    "tooltip": _tooltip_enc(dnames, mnames, labels)}
+                          "axis": {"titleColor": colors[0], "format": qformat(first)}},
+                    "tooltip": _tooltip_enc(dnames, mnames, labels, formats, data)}
             enc1 = {"y": {"field": second, "type": "quantitative",
                           "title": _short_label(labels.get(second, second), 40),
-                          "axis": {"orient": "right", "titleColor": colors[1]}}}
+                          "axis": {"orient": "right", "titleColor": colors[1],
+                                   "format": qformat(second)}}}
             return {"data": {"values": data},
                     "encoding": {"x": enc_dim},
                     "layer": [
@@ -2860,15 +3087,18 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
                                "__value": row.get(m)})
         series_mark = ("line" if (dtype == "temporal" or mark == "line")
                        else "area" if mark == "area" else "bar")
+        vfmt = _value_format("__value", None, values)
         enc = {"x": enc_dim,
-               "y": {"field": "__value", "type": "quantitative", "title": "Valeur"},
+               "y": {"field": "__value", "type": "quantitative", "title": "Valeur",
+                     "axis": {"format": vfmt}},
                "color": {"field": "__measure", "type": "nominal", "title": "Mesure",
                          "scale": {"range": colors}},
                "tooltip": [
                    {"field": dnames[0], "type": dtype,
                     "title": _short_label(labels.get(dnames[0], dnames[0]), 40)},
                    {"field": "__measure", "type": "nominal", "title": "Mesure"},
-                   {"field": "__value", "type": "quantitative", "title": "Valeur"}]}
+                   {"field": "__value", "type": "quantitative", "title": "Valeur",
+                    "format": vfmt}]}
         return {"data": {"values": values},
                 "mark": {"type": series_mark, "tooltip": True},
                 "encoding": enc}
@@ -2880,22 +3110,24 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
                "x2": {"field": mnames[1]},
                "color": {"field": mnames[2] if len(mnames) > 2 else mnames[0],
                          "type": "nominal"},
-               "tooltip": _tooltip_enc(dnames, mnames, labels)}
+               "tooltip": _tooltip_enc(dnames, mnames, labels, formats, data)}
         return {"data": {"values": data}, "mark": {"type": "bar", "tooltip": True},
                 "encoding": enc}
 
     meas = mnames[0]
     kind = ("line" if (mark == "automatic" and dtype == "temporal")
             else MARK_MAP.get(mark, "bar"))
-    enc = {"tooltip": _tooltip_enc(dnames, mnames, labels)}
+    enc = {"tooltip": _tooltip_enc(dnames, mnames, labels, formats, data)}
     if on_rows:
         enc["y"] = enc_dim
         enc["x"] = {"field": meas, "type": "quantitative",
-                    "title": _short_label(labels.get(meas, meas), 48)}
+                    "title": _short_label(labels.get(meas, meas), 48),
+                    "axis": {"format": qformat(meas)}}
     else:
         enc["x"] = enc_dim
         enc["y"] = {"field": meas, "type": "quantitative",
-                    "title": _short_label(labels.get(meas, meas), 48)}
+                    "title": _short_label(labels.get(meas, meas), 48),
+                    "axis": {"format": qformat(meas)}}
 
     color_items = [c for c in s.encodings.get("color", [])
                    if f"{c.agg}:{c.field}" in names or c.field in names]
@@ -2910,8 +3142,13 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
         else:
             enc["color"]["scale"] = {"range": colors}
         ex = _part_axis_expr(ckey)
+        legend = {}
         if ex:
-            enc["color"]["legend"] = {"labelExpr": ex}
+            legend["labelExpr"] = ex
+        if ctype == "quantitative" and qformat(ckey):
+            legend["format"] = qformat(ckey)
+        if legend:
+            enc["color"]["legend"] = legend
     elif kind == "rect":
         enc["color"] = {"field": meas, "type": "quantitative", "scale": {"range": SEQ}}
 
@@ -2923,6 +3160,8 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
         enc["size"] = {"field": skey, "type": "quantitative",
                        "title": _short_label(labels.get(skey, skey), 40),
                        "scale": {"range": [30, 900]}}
+        if qformat(skey):
+            enc["size"]["legend"] = {"format": qformat(skey)}
 
     base = {"data": {"values": data}, "mark": {"type": kind, "tooltip": True},
             "encoding": enc}
@@ -2930,7 +3169,7 @@ def vega_spec(s: Sheet, dims, measures, names, data, refs=None, labels=None,
     layers = []
     if s.labels:
         text_enc = {"text": {"field": meas, "type": "quantitative"}}
-        tf = _d3_format((formats or {}).get(meas))
+        tf = qformat(meas)
         if tf:
             text_enc["text"]["format"] = tf
         for ch in ("x", "y"):
@@ -3146,13 +3385,39 @@ def _d3_format(fmt: dict | None) -> str | None:
     return None
 
 
-def _tooltip_enc(dnames: list[str], mnames: list[str], labels: dict) -> list[dict]:
+def _value_format(name: str, formats: dict | None, data: list[dict]) -> str | None:
+    """Format d3 : format Tableau s'il existe, sinon arrondi lisible."""
+    fmt = _d3_format((formats or {}).get(name))
+    if fmt:
+        return fmt
+    vals = [row.get(name) for row in data
+            if isinstance(row.get(name), (int, float))
+            and not isinstance(row.get(name), bool)]
+    if not vals:
+        return None
+    if all(float(v).is_integer() for v in vals):
+        return ",.0f"
+    biggest = max(abs(float(v)) for v in vals)
+    if biggest < 0.001:
+        return ",.3e"
+    if biggest >= 1000:
+        return ",.1f"
+    return ",.2f"
+
+
+def _tooltip_enc(dnames: list[str], mnames: list[str], labels: dict,
+                 formats: dict | None = None, data: list[dict] | None = None) -> list[dict]:
     out = []
     for d in dnames:
         out.append({"field": d, "type": _dim_type(d, []),
                     "title": _short_label(labels.get(d, d), 40)})
     for m in mnames:
-        out.append({"field": m, "type": "quantitative", "title": _short_label(labels.get(m, m), 40)})
+        item = {"field": m, "type": "quantitative",
+                "title": _short_label(labels.get(m, m), 40)}
+        fmt = _value_format(m, formats, data or [])
+        if fmt:
+            item["format"] = fmt
+        out.append(item)
     return out
 
 

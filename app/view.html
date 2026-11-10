@@ -30,7 +30,7 @@
   main { padding:16px; }
   .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px; }
   .sheethead { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
-  .sheethead h2 { font-size:15px; margin:0; font-weight:600; }
+  .sheethead h2 { font-size:15px; margin:0; font-weight:600; white-space:pre-line; }
   .sheethead .sub { color:var(--muted); font-size:12px; }
   .chart { width:100%; height:100%; }
   .dash { position:relative; width:100%; margin:0 auto; border-radius:8px; overflow:hidden; }
@@ -56,6 +56,7 @@
   .meta { color:var(--muted); font-size:12px; padding:2px 2px 8px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
   .controls { display:flex; gap:12px; flex-wrap:wrap; padding:2px 2px 12px; border-bottom:1px solid var(--bd); margin-bottom:14px; align-items:flex-end; }
   .ctl { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .ctl .ctllabel { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ctl select, .ctl input { font:13px system-ui; padding:5px 7px; border:1px solid var(--bd); border-radius:6px; background:#fff; color:var(--ink); text-transform:none; letter-spacing:0; min-width:120px; }
   .ctl select[multiple] { min-width:160px; padding:3px; }
   .ctl .row { display:flex; gap:4px; align-items:center; }
@@ -77,6 +78,16 @@
   .sliderctl { display:flex; align-items:center; gap:8px; }
   .sliderctl input[type=range] { width:140px; }
   .sliderctl span { font-size:12px; color:var(--ink); min-width:34px; }
+  .ctl.compact { gap:1px; height:100%; overflow:hidden; }
+  .ctl.compact .ctllabel { flex:0 0 auto; font-size:8px; line-height:1; }
+  .ctl.compact select, .ctl.compact input { width:100%; min-width:0; font-size:10px; padding:1px 4px; line-height:1.2; }
+  .ctl.compact select[multiple] { min-width:0; padding:1px; }
+  .ctl.compact .ms { width:100%; min-width:0; }
+  .ctl.compact .msbtn { width:100%; min-width:0; height:19px; padding:1px 4px; font-size:10px; line-height:1; }
+  .ctl.compact .sliderctl { gap:4px; }
+  .ctl.compact .sliderctl input[type=range] { width:100%; min-width:0; }
+  .ctl.compact .sliderctl span { font-size:9px; min-width:0; }
+  .ctl.compact .row input { width:100%; min-width:0; }
   th.clickable, td.clickable { cursor:pointer; }
   th.clickable:hover, td.clickable:hover { background:#eef4ff; color:#1b4ea8; }
   .cfilter { display:flex; align-items:center; gap:10px; background:#eef4ff; border:1px solid #c9dcff; color:#1b4ea8; padding:7px 12px; border-radius:8px; margin-bottom:12px; font-size:13px; flex-wrap:wrap; }
@@ -159,6 +170,10 @@
 <div class="toast" id="toast"></div>
 <script nonce="__CSP_NONCE__">
 const WB = /*__DATA__*/null;
+if (window.vega && vega.formatLocale) {
+  vega.formatLocale({ decimal: ',', thousands: '\u202f', grouping: [3],
+                      currency: ['', ' €'] });
+}
 const main = document.getElementById('main');
 const tabs = document.getElementById('tabs');
 function withKey(url){
@@ -215,6 +230,7 @@ const state = {
   dash: null,
   dashFit: null,
   story: {},
+  paramsDirty: false,
 };
 const CLEANUPS = [];
 (WB.parameters || []).forEach(p => { state.params[p.name] = p.value; });
@@ -259,8 +275,10 @@ function fmt(v, spec) {
   }
   if (typeof v === 'number') {
     const a = Math.abs(v);
-    if (a !== 0 && a < 0.001) return v.toExponential(3);
-    return v.toLocaleString('fr-FR', { maximumSignificantDigits: 6 });
+    if (a !== 0 && a < 0.001) return v.toExponential(2);
+    if (a < 1) return v.toLocaleString('fr-FR', { maximumSignificantDigits: 3 });
+    if (a >= 1000) return v.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    return v.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
   }
   return String(v);
 }
@@ -1004,8 +1022,11 @@ function tooltipHtml(s, p) {
   if (s.sizeField && p[s.sizeField] != null)
     html += `<div><b>Taille</b> : ${esc(fmt(Number(p[s.sizeField]), null))}</div>`;
   Object.entries(p).forEach(([k, v]) => {
-    if (k === '__value' || k === '__size') return;
-    html += `<div><b>${esc(displayLabel(k, 40))}</b> : ${esc(v == null ? '—' : v)}</div>`;
+    if (k.startsWith('__') || k === s.valueField || k === s.sizeField) return;
+    const label = (s.labels && s.labels[k]) || k;
+    const spec = s.formats && s.formats[k];
+    const text = typeof v === 'number' ? fmt(v, spec) : (v == null ? '—' : String(v));
+    html += `<div><b>${esc(displayLabel(label, 40))}</b> : ${esc(text)}</div>`;
   });
   return html || '—';
 }
@@ -1412,10 +1433,13 @@ function renderSheet(s, el, onClick, opts) {
 function controlLabel(text, max) {
   return displayLabel(text, max || 30);
 }
-function paramControl(p, onChange) {
+function paramControl(p, onChange, compact) {
   const wrap = document.createElement('label');
-  wrap.className = 'ctl';
-  wrap.append(document.createTextNode(p.caption || p.name));
+  wrap.className = compact ? 'ctl compact' : 'ctl';
+  const lab = document.createElement('span');
+  lab.className = 'ctllabel';
+  lab.textContent = p.caption || p.name;
+  wrap.appendChild(lab);
   let el;
   if (p.members && p.members.length) {
     el = document.createElement('select');
@@ -1432,7 +1456,7 @@ function paramControl(p, onChange) {
             : (p.datatype === 'integer' || p.datatype === 'real') ? 'number' : 'text';
     el.value = labelOf(state.params[p.name] || '');
   }
-  el.onchange = () => { state.params[p.name] = el.value; onChange(); };
+  el.onchange = () => { state.params[p.name] = el.value; state.paramsDirty = true; onChange(); };
   wrap.appendChild(el);
   return wrap;
 }
@@ -1593,11 +1617,14 @@ function sliderControl(values, selected, onChange, labels, field) {
   return box;
 }
 
-function filterControl(f, onChange) {
+function filterControl(f, onChange, compact) {
   if (f.expression) return null;   // filtre par formule, piloté par les paramètres
   const wrap = document.createElement('div');
-  wrap.className = 'ctl';
-  wrap.append(document.createTextNode(controlLabel(f.label || f.field, 34)));
+  wrap.className = compact ? 'ctl compact' : 'ctl';
+  const lab = document.createElement('span');
+  lab.className = 'ctllabel';
+  lab.textContent = controlLabel(f.label || f.field, 34);
+  wrap.appendChild(lab);
   const cls = f.class || 'categorical';
   if (cls === 'quantitative' || (f.range && (f.range.min != null || f.range.max != null))) {
     const row = document.createElement('div');
@@ -1627,7 +1654,7 @@ function filterControl(f, onChange) {
     el.onchange = () => onChange({ wildcard: { match: '*' + el.value + '*' } });
     wrap.appendChild(el);
   } else {
-    const mode = f.mode || 'list';
+    const mode = compact && (!f.mode || f.mode === 'list') ? 'checkdropdown' : (f.mode || 'list');
     if (mode === 'slider') {
       wrap.appendChild(sliderControl(f.values || [], f.selected || [], onChange, f.valueLabels, f.field));
       return wrap;
@@ -1882,6 +1909,8 @@ function renderDash(d, el) {
   const height = dev ? dev.height : (d.height || 800);
   const fit = dev ? 'width'
     : (state.dashFit || (d.sizing === 'automatic' ? 'window' : 'width'));
+  const paramsDirty = state.paramsDirty;
+  state.paramsDirty = false;
   const box = document.createElement('div');
   box.className = 'dash';
   if (dev || fit === 'width') {
@@ -1937,23 +1966,33 @@ function renderDash(d, el) {
     if (z.kind === 'param') {
       const p = (WB.parameters || []).find(x => x.name === z.param);
       if (!p) return;
-      zone.appendChild(paramControl(p, () => show(state.view)));
+      const compact = (Number(z.h || 0) / 100000) * height < 56;
+      if (compact) zone.style.padding = '1px 2px';
+      zone.appendChild(paramControl(p, () => show(state.view), compact));
       return;
     }
     if (z.kind === 'filter') {
+      const compact = (Number(z.h || 0) / 100000) * height < 56;
+      if (compact) zone.style.padding = '1px 2px';
       const sheet = WB.sheets.find(s => s.name === z.sheet);
-      const f = sheet && (sheet.filters || []).find(x => x.field === z.field);
+      let f = sheet && (sheet.filters || []).find(x => x.field === z.field);
+      if (!f) {
+        for (const s of WB.sheets) {
+          f = (s.filters || []).find(x => x.field === z.field);
+          if (f) break;
+        }
+      }
       if (!f) {
         const t = document.createElement('div');
         t.className = 'zt';
-        t.textContent = displayLabel(z.field, 30);
+        t.textContent = z.label || displayLabel(z.field, 30);
         zone.appendChild(t);
         return;
       }
       const cur = state.dashFilters[z.field];
       const ff = Object.assign({}, f, {
         mode: z.mode,
-        label: (sheet.labels && sheet.labels[z.field]) || z.field,
+        label: z.label || (sheet.labels && sheet.labels[z.field]) || f.label || f.field,
       });
       const storyF = (state.storyFilters && state.storyFilters[z.sheet]) || [];
       const sf = storyF.find(x => x.field === z.field);
@@ -1974,7 +2013,7 @@ function renderDash(d, el) {
       const ctl = filterControl(ff, val => {
         state.dashFilters[z.field] = val;
         show(state.view);
-      });
+      }, compact);
       if (ctl) zone.appendChild(ctl);
       return;
     }
@@ -1997,7 +2036,7 @@ function renderDash(d, el) {
     const filtered = state.filter && state.filter.source !== s.name;
     const storyF = state.storyFilters && state.storyFilters[s.name];
     const opts = { noTitle: z.show_title === false, fit: z.fit };
-    if (filtered || Object.keys(state.dashFilters).length || storyF) {
+    if (paramsDirty || filtered || Object.keys(state.dashFilters).length || storyF) {
       loadSheet(s.name, inner, clickable ? (fields => {
         const act = actionFor(s, 'on-select');
         if (act) dispatch(act, fields, s);
@@ -2157,12 +2196,17 @@ document.addEventListener('keydown', e => {
 });
 
 if (WB.warnings && WB.warnings.length) {
+  const warnings = [...new Set(WB.warnings)];
+  const missing = warnings.filter(x => /absente de l.extrai|extrait vide|aucun extrait/i.test(x));
   const w = document.createElement('details');
   w.className = 'warn';
+  w.open = missing.length > 0;
   const sum = document.createElement('summary');
-  sum.textContent = WB.warnings.length + ' avertissement(s) — certaines feuilles peuvent être incomplètes';
+  sum.textContent = missing.length
+    ? `Données incomplètes : ${missing.length} colonne(s) absente(s) de l’extrait — certaines feuilles seront vides`
+    : warnings.length + ' avertissement(s) — certaines feuilles peuvent être incomplètes';
   const ul = document.createElement('ul');
-  WB.warnings.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+  warnings.forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
   w.append(sum, ul);
   main.parentNode.insertBefore(w, main);
 }

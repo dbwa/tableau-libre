@@ -460,6 +460,10 @@ def window_sql(func: str, args: list[str], order: str, desc: bool = False) -> st
     f = func.upper()
     order = order or "1"
     direction = "DESC" if desc else "ASC"
+
+    def int_arg(value: str) -> int:
+        # translate() espace les signes : « -1 » devient « - 1 »
+        return int(re.sub(r"\s+", "", value))
     if f == "TOTAL":
         return f"SUM({args[0]}) OVER ()"
     if f == "RUNNING_SUM":
@@ -477,7 +481,7 @@ def window_sql(func: str, args: list[str], order: str, desc: bool = False) -> st
               "WINDOW_MIN": "MIN", "WINDOW_MAX": "MAX"}[f]
         if len(args) >= 3:
             try:
-                start, end = int(args[1]), int(args[2])
+                start, end = int_arg(args[1]), int_arg(args[2])
             except ValueError as exc:
                 raise CalcError("WINDOW_* : bornes non entières") from exc
             frame = _rows_between(start, end)
@@ -494,7 +498,7 @@ def window_sql(func: str, args: list[str], order: str, desc: bool = False) -> st
         if len(args) < 2:
             raise CalcError("LOOKUP attend 2 arguments")
         try:
-            offset = int(args[1])
+            offset = int_arg(args[1])
         except ValueError as exc:
             raise CalcError("LOOKUP : décalage non entier") from exc
         if offset > 0:

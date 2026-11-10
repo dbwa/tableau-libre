@@ -1,16 +1,20 @@
 """Tests de bout en bout sur les classeurs réels (extraits Hyper requis)."""
 import os
+import shutil
+import tempfile
 import unittest
 from collections import Counter
 
 from tableauhyperapi import Date
 
-from reader import _jsonable, open_workbook
+from reader import _jsonable, open_workbook, parse_shelf
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "import_donnees_exemples")
 CPH = os.path.join(DATA, "CPHv3_online3.twb")
 FE = os.path.join(DATA, "demande_antoine_fe_laposte.twb")
+CONSO = os.path.join(DATA, "20251202_conso_inv2030-2035_v5.twbx")
+EMIS = os.path.join(DATA, "20251128_emis_inv2030-2035_v3.twbx")
 
 
 @unittest.skipUnless(os.path.exists(CPH), "classeur CPHv3 absent")
@@ -199,6 +203,105 @@ class Serialisation(unittest.TestCase):
         self.assertEqual(_jsonable(Date(2024, 11, 18)), "2024-11-18")
         self.assertEqual(_jsonable(b"\x01\x02"), "0102")
         self.assertEqual(_jsonable(3), 3)
+
+
+class NomsDInstances(unittest.TestCase):
+    def test_prefixe_de_calcul_de_table(self):
+        # « pcto:sum:x:qk:2 » désignait à tort le champ « sum:x:qk »
+        item = parse_shelf("[ds].[pcto:sum:emissions:qk:2]")[0]
+        self.assertEqual((item.agg, item.field, item.kind), ("sum", "emissions", "qk"))
+
+    def test_derivation_utilisateur(self):
+        item = parse_shelf("[ds].[usr:Calculation_1:qk:2]")[0]
+        self.assertEqual((item.agg, item.field, item.kind), ("usr", "Calculation_1", "qk"))
+
+
+@unittest.skipUnless(os.path.exists(CONSO) and os.path.exists(EMIS),
+                     "classeurs d'exemple absents")
+class ExemplesImportes(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dirs = []
+        cls.wbs = {}
+        for key, path in (("conso", CONSO), ("emis", EMIS)):
+            workdir = tempfile.mkdtemp(prefix=f"tableau-{key}-")
+            cls.dirs.append(workdir)
+            wb = open_workbook(path, workdir)
+            cls.wbs[key] = (wb, wb.render())
+
+    @classmethod
+    def tearDownClass(cls):
+        for workdir in cls.dirs:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+    def test_aucun_avertissement(self):
+        for key in ("conso", "emis"):
+            self.assertEqual(self.wbs[key][1]["warnings"], [], key)
+
+    def test_calcul_de_table_rendu(self):
+        wb = self.wbs["conso"][0]
+        sheet = wb.render_sheet_by_name("évolution par secteur échelle1")
+        self.assertGreater(sheet["total"], 0)
+
+    def test_jointure_sur_colonne_renommee(self):
+        wb = self.wbs["emis"][0]
+        sheet = wb.render_sheet_by_name("emissions carto")
+        self.assertTrue(sheet["features"])
+
+    def test_sauts_de_ligne_zone_texte(self):
+        wb, rendered = self.wbs["emis"]
+        zones = [z for d in rendered["dashboards"] for z in d["zones"]
+                 if z.get("kind") == "text" and "Liste des secteurs" in z.get("text", "")]
+        self.assertTrue(zones)
+        self.assertNotIn("Æ", zones[0]["text"])
+        self.assertIn("Biogenique\n- Traitement des dechets", zones[0]["text"])
+
+    def test_titre_dynamique(self):
+        wb = self.wbs["emis"][0]
+        sheet = wb.render_sheet_by_name(
+            "emissions par km2 carto",
+            params={"Echelle (copie)": "Emissions par km2"},
+            filters={"polluant": ["CH4"], "secteur": ["Chantiers"],
+                     "combustible": ["Bois"], "annee_ref": ["2019"]})
+        self.assertEqual(
+            sheet["title"],
+            "Emissions par km2 de CH4\n"
+            "Secteur Chantiers | Combustible Bois | Année 2019")
+
+    def test_titre_sans_reference_brute(self):
+        rendered = self.wbs["emis"][1]
+        title = next(s["title"] for s in rendered["sheets"]
+                     if s["name"] == "table combustible le plus contrib")
+        self.assertNotIn("federated", title)
+        self.assertNotIn("Æ", title)
+        self.assertNotIn("<", title)
+        self.assertIn("CH4", title)
+
+    def test_infobulle_carte_resolue(self):
+        wb = self.wbs["conso"][0]
+        sheet = wb.render_sheet_by_name("conso normal par indic sectoriel échelle2")
+        props = sheet["features"][0]["properties"]
+        self.assertIn("attr:intitule_indicateur (Requête SQL personnalisée9)", props)
+        self.assertIsNotNone(props["sum:valeur_indicateur (Requête SQL personnalisée9)"])
+
+    def test_arrondi_graphiques(self):
+        wb = self.wbs["conso"][0]
+        spec = wb.render_sheet_by_name("DJU")["spec"]
+        self.assertEqual(spec["encoding"]["y"]["axis"]["format"], ",.2f")
+
+    def test_sheet_name_dans_titre(self):
+        wb = self.wbs["conso"][0]
+        title = wb.render_sheet_by_name("ratio conso_new/conso_old")["title"]
+        self.assertTrue(title.startswith("ratio conso_new/conso_old\n"))
+        self.assertNotIn("<Sheet Name>", title)
+
+    def test_libelle_filtre_dashboard(self):
+        _, rendered = self.wbs["conso"]
+        dash = next(d for d in rendered["dashboards"]
+                    if d["name"] == "comparaison inv précédent (ratios)")
+        zone = next(z for z in dash["zones"]
+                    if z.get("field", "").startswith("Ratio conso_new"))
+        self.assertEqual(zone["label"], "Ratio conso_new_VS_old_entier")
 
 
 if __name__ == "__main__":

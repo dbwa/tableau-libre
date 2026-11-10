@@ -1,7 +1,8 @@
 """Tests du traducteur de calculs Tableau -> SQL."""
 import unittest
 
-from calcs import CalcError, has_aggregate, referenced_fields, translate
+from calcs import (CalcError, has_aggregate, referenced_fields, translate,
+                   window_sql)
 
 TYPES = {"a": "num", "s": "str", "d": "any"}
 
@@ -80,6 +81,17 @@ class Introspection(unittest.TestCase):
 
     def test_referenced_fields(self):
         self.assertEqual(referenced_fields("[a] + [s]"), ["a", "s"])
+
+
+class CalculsDeTable(unittest.TestCase):
+    def test_lookup_decallage_espace(self):
+        # translate() écrit « - 1 » ; LOOKUP doit quand même l'accepter
+        self.assertEqual(window_sql("LOOKUP", ['"a"', "- 1"], "1"),
+                         'LEAD("a", 1) OVER (ORDER BY 1)')
+
+    def test_lookup_decallage_invalide(self):
+        with self.assertRaises(CalcError):
+            window_sql("LOOKUP", ['"a"', "x"], "1")
 
 
 if __name__ == "__main__":
